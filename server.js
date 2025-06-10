@@ -10,6 +10,9 @@ const { connectDB, closeDB } = require('./src/database/connection');
 const {
   schedulePendingOrderCancellation,
 } = require('./src/jobs/pendingOrderCanceller');
+const {
+  scheduleExchangeRateUpdate,
+} = require('./src/jobs/exchangeRateUpdater');
 
 // Lấy cổng từ biến môi trường hoặc dùng cổng mặc định 5000
 const PORT = process.env.PORT || 5000;
@@ -32,6 +35,7 @@ const startServer = async () => {
       // Chỉ chạy ở môi trường không phải test để tránh ảnh hưởng đến test DB
       if (process.env.NODE_ENV !== 'test') {
         schedulePendingOrderCancellation();
+        scheduleExchangeRateUpdate();
       }
     });
   } catch (error) {

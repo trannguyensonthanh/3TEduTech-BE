@@ -4,7 +4,10 @@ const paymentService = require('./payments.service');
 const { catchAsync } = require('../../utils/catchAsync');
 const config = require('../../config'); // Để lấy frontend URL
 const ApiError = require('../../core/errors/ApiError');
+const logger = require('../../utils/logger');
+const stripe = require('../../config/stripe');
 
+// Để sử dụng Stripe SDK
 const createVnpayUrl = catchAsync(async (req, res) => {
   const { orderId, bankCode, locale } = req.body;
   // Lấy IP từ request (cần cấu hình Express để tin tưởng proxy nếu có)
@@ -52,12 +55,48 @@ const handleVnpayReturn = catchAsync(async (req, res) => {
   res.redirect(redirectUrl);
 });
 
-// Controller cho IPN đã có trong orders.controller.js (handlePaymentWebhook)
-// Nếu muốn tách riêng thì di chuyển logic xử lý IPN sang paymentService và tạo controller ở đây.
-// Hiện tại để ở orderController vì nó liên quan mật thiết đến việc xử lý đơn hàng.
+const createStripeCheckoutSession = catchAsync(async (req, res) => {
+  const { orderId } = req.body;
+  const accountId = req.user.id;
+  const sessionData = await paymentService.createStripeCheckoutSession(
+    orderId,
+    accountId
+  );
+  res.status(httpStatus.OK).send(sessionData);
+});
+
+const createCryptoInvoice = catchAsync(async (req, res) => {
+  const { orderId, cryptoCurrency } = req.body;
+  const accountId = req.user.id;
+
+  const invoiceDetails = await paymentService.createCryptoInvoice(
+    orderId,
+    cryptoCurrency,
+    accountId
+  );
+  res.status(httpStatus.CREATED).send(invoiceDetails);
+});
+
+const handleCryptoWebhook = catchAsync(async (req, res) => {
+  const signature = req.headers['x-nowpayments-sig'];
+  const rawBody = req.body;
+
+  if (!rawBody || rawBody.length === 0 || !signature) {
+    logger.error(
+      'Crypto Webhook Error: Received empty body or missing signature.'
+    );
+    throw new ApiError(httpStatus.BAD_REQUEST, 'Invalid webhook request.');
+  }
+
+  await paymentService.processCryptoWebhook(signature, rawBody);
+
+  res.status(httpStatus.OK).send();
+});
 
 module.exports = {
   createVnpayUrl,
   handleVnpayReturn,
-  // handleVnpayIpn (nếu tách riêng)
+  createStripeCheckoutSession,
+  createCryptoInvoice,
+  handleCryptoWebhook,
 };

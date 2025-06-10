@@ -29,6 +29,7 @@ const attachmentRepository = require('../lessons/lessonAttachment.repository');
 const subtitleRepository = require('../lessons/subtitle.repository');
 const { toCamelCaseObject } = require('../../utils/caseConverter');
 const userRepository = require('../users/users.repository');
+const pricingUtil = require('../../utils/pricing.util');
 /**
  * Tạo khóa học mới (bởi Instructor).
  * @param {object} courseData - Dữ liệu từ request body.
@@ -112,9 +113,16 @@ const createCourse = async (courseData, instructorId) => {
  * @param {object} filters - Bộ lọc (categoryId, levelId, instructorId, statusId, searchTerm,...).
  * @param {object} options - Phân trang và sắp xếp (page, limit, sortBy).
  * @param {object|null} user - Thông tin user đang đăng nhập (nếu có).
+ * @param {string} targetCurrency - Mã tiền tệ muốn hiển thị giá (ví dụ: 'USD', 'VND').
  * @returns {Promise<object>} - { courses, total, page, limit, totalPages }.
  */
-const getCourses = async (filters = {}, options = {}, user = null) => {
+const getCourses = async (
+  // Không có lỗi
+  filters = {},
+  options = {},
+  user = null,
+  targetCurrency
+) => {
   const effectiveFilters = { ...filters };
 
   // Logic phân quyền xem dữ liệu:
@@ -161,9 +169,21 @@ const getCourses = async (filters = {}, options = {}, user = null) => {
     effectiveFilters,
     options
   );
-  console.log('result', result);
+
+  const coursesWithPricing = await Promise.all(
+    result.courses.map(async (course) => {
+      const pricing = await pricingUtil.createPricingObject(
+        course,
+        targetCurrency
+      );
+      delete course.OriginalPrice;
+      delete course.DiscountedPrice;
+      return { ...toCamelCaseObject(course), pricing };
+    })
+  );
+
   return {
-    courses: toCamelCaseObject(result.courses), // Chuyển đổi sang camelCase nếu cần
+    courses: coursesWithPricing, // <<< SỬ DỤNG MẢNG MỚI
     total: result.total,
     page: parseInt(page, 10),
     limit: parseInt(limit, 10),
@@ -178,7 +198,7 @@ const getCourses = async (filters = {}, options = {}, user = null) => {
  * @param {object|null} user - Thông tin user đang đăng nhập (nếu có).
  * @returns {Promise<object>} - Chi tiết khóa học với cấu trúc nội dung.
  */
-const getCourseBySlug = async (slug, user = null) => {
+const getCourseBySlug = async (slug, user = null, targetCurrency) => {
   const isAdmin =
     user && (user.role === Roles.ADMIN || user.role === Roles.SUPERADMIN);
   const isPotentiallyInstructor = user && user.role === Roles.INSTRUCTOR;
@@ -296,7 +316,12 @@ const getCourseBySlug = async (slug, user = null) => {
   } else {
     course.userProgress = {};
   }
-
+  course.pricing = await pricingUtil.createPricingObject(
+    course,
+    targetCurrency
+  );
+  delete course.OriginalPrice;
+  delete course.DiscountedPrice;
   return toCamelCaseObject(course); // Chuyển đổi sang camelCase nếu cần
 };
 

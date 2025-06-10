@@ -347,6 +347,73 @@ const deletePost = async (postId, user) => {
   logger.info(`Discussion post ${postId} deleted by user ${user.id}`);
 };
 
+/**
+ * Giảng viên/Admin đóng hoặc mở một thread.
+ * @param {number} threadId
+ * @param {boolean} isClosed
+ * @param {object} user
+ * @returns {Promise<object>}
+ */
+const closeOrOpenThread = async (threadId, isClosed, user) => {
+  const thread = await discussionRepository.findThreadById(threadId); // Hàm này đã join lấy CourseInstructorID
+  if (!thread) {
+    throw new ApiError(
+      httpStatus.NOT_FOUND,
+      'Không tìm thấy chủ đề thảo luận.'
+    );
+  }
+
+  // Kiểm tra quyền: Chỉ instructor của khóa học hoặc Admin
+  const isAdmin = user.role === Roles.ADMIN || user.role === Roles.SUPERADMIN;
+  const isCourseInstructor =
+    user.role === Roles.INSTRUCTOR && thread.CourseInstructorID === user.id;
+
+  if (!isCourseInstructor && !isAdmin) {
+    throw new ApiError(
+      httpStatus.FORBIDDEN,
+      'Bạn không có quyền thay đổi trạng thái chủ đề này.'
+    );
+  }
+
+  const updatedThread = await discussionRepository.updateThreadClosedStatus(
+    threadId,
+    isClosed
+  );
+  if (!updatedThread) {
+    // Lỗi không mong muốn
+    throw new ApiError(
+      httpStatus.INTERNAL_SERVER_ERROR,
+      'Cập nhật trạng thái chủ đề thất bại.'
+    );
+  }
+
+  logger.info(
+    `Thread ${threadId} status changed to IsClosed=${isClosed} by user ${user.id}`
+  );
+  // // TODO: Gửi thông báo nếu cần (ví dụ: cho người tạo thread)
+  // // Gửi thông báo cho người tạo thread nếu trạng thái bị thay đổi bởi người khác
+  // if (thread.CreatedByAccountID !== user.id) {
+  //   try {
+  //     const action = isClosed ? 'đã đóng' : 'đã mở lại';
+  //     const message = `Chủ đề "${thread.Title}" của bạn ${action} bởi ${user.displayName || 'quản trị viên'}.`;
+  //     await notificationService.createNotification(
+  //       thread.CreatedByAccountID,
+  //       'THREAD_STATUS_CHANGED',
+  //       message,
+  //       { type: 'DiscussionThread', id: threadId }
+  //     );
+  //   } catch (notifyError) {
+  //     logger.error(
+  //       `Failed to send thread status notification for thread ${threadId}:`,
+  //       notifyError
+  //     );
+  //   }
+  // }
+
+  // Trả về thread đã cập nhật với đầy đủ thông tin
+  return discussionRepository.findThreadById(threadId);
+};
+
 module.exports = {
   // Threads
   createThread,
@@ -358,4 +425,5 @@ module.exports = {
   getPostsByThread,
   updatePost,
   deletePost,
+  closeOrOpenThread,
 };

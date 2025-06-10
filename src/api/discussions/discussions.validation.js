@@ -81,6 +81,15 @@ const deletePost = {
   }),
 };
 
+const updateThreadStatus = {
+  params: Joi.object().keys({
+    threadId: Joi.number().integer().required(),
+  }),
+  body: Joi.object().keys({
+    isClosed: Joi.boolean().required(),
+  }),
+};
+
 module.exports = {
   createThread,
   getThreads,
@@ -90,4 +99,5 @@ module.exports = {
   getPosts,
   updatePost,
   deletePost,
+  updateThreadStatus,
 };

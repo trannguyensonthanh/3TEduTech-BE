@@ -21,11 +21,18 @@ router.get(
   paymentController.handleVnpayReturn
 );
 
-// Route xử lý IPN đã được mount ở app.js (/webhooks/payment-callback)
-// Nếu muốn đặt ở đây:
-// router.get('/vnpay_ipn',
-//      validate(paymentValidation.vnpayIpn),
-//      orderController.handlePaymentWebhook // Gọi controller từ order hoặc tạo controller riêng ở payment
-// );
+router.post(
+  '/stripe/create-checkout-session',
+  authenticate,
+  validate(paymentValidation.createStripeSession),
+  paymentController.createStripeCheckoutSession
+);
+
+router.post(
+  '/crypto/create-invoice',
+  authenticate,
+  validate(paymentValidation.createCryptoInvoice),
+  paymentController.createCryptoInvoice
+);
 
 module.exports = router;

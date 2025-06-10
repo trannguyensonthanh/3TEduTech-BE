@@ -5,6 +5,7 @@ const PaymentMethod = Object.freeze({
   SYSTEM_CREDIT: 'SYSTEM_CREDIT',
   PAYPAL: 'PAYPAL',
   CRYPTO: 'CRYPTO',
+  STRIPE: 'STRIPE',
 });
 
 module.exports = PaymentMethod;

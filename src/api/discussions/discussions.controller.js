@@ -66,6 +66,16 @@ const deletePost = catchAsync(async (req, res) => {
   res.status(httpStatus.NO_CONTENT).send();
 });
 
+const updateThreadStatus = catchAsync(async (req, res) => {
+  const { isClosed } = req.body;
+  const thread = await discussionService.closeOrOpenThread(
+    req.params.threadId,
+    isClosed,
+    req.user
+  );
+  res.status(httpStatus.OK).send(thread);
+});
+
 module.exports = {
   // Threads
   createThread,
@@ -77,4 +87,5 @@ module.exports = {
   getPosts,
   updatePost,
   deletePost,
+  updateThreadStatus,
 };

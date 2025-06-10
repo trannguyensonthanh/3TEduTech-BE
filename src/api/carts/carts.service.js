@@ -1,12 +1,14 @@
 // File: carts.service.js
 
 const httpStatus = require('http-status').status;
+const { default: Decimal } = require('decimal.js');
 const cartRepository = require('./carts.repository');
 const courseRepository = require('../courses/courses.repository'); // Lấy thông tin khóa học
 const enrollmentService = require('../enrollments/enrollments.service'); // Kiểm tra đã enroll chưa
 const ApiError = require('../../core/errors/ApiError');
 const CourseStatus = require('../../core/enums/CourseStatus');
-
+const pricingUtil = require('../../utils/pricing.util');
+const logger = require('../../utils/logger');
 /**
  * Lấy hoặc tạo giỏ hàng cho user.
  * @param {number} accountId
@@ -99,46 +101,85 @@ const removeCourseFromCart = async (accountId, courseId) => {
 /**
  * Xem chi tiết giỏ hàng của người dùng.
  * @param {number} accountId
+ * @param {string} targetCurrency - Mã tiền tệ muốn hiển thị giá (ví dụ: 'USD', 'VND').
  * @returns {Promise<{items: object[], totalOriginalPrice: number, totalDiscountedPrice: number, finalPrice: number}>}
  */
-const viewCart = async (accountId) => {
+const viewCart = async (accountId, targetCurrency) => {
   const cart = await getUserCart(accountId);
-  const items = await cartRepository.findCartItemsByCartId(cart.CartID);
+  const itemsFromRepo = await cartRepository.findCartItemsByCartId(cart.CartID);
 
-  let totalOriginalPrice = 0;
-  let finalPrice = 0;
+  let totalOriginalPrice = new Decimal(0);
+  let finalPrice = new Decimal(0);
+  const itemsWithPricing = await Promise.all(
+    itemsFromRepo.map(async (item) => {
+      // Giá gốc (base) của item sẽ được tính theo giá gốc của khóa học
+      const itemAsCourse = {
+        OriginalPrice: item.OriginalPrice,
+        DiscountedPrice: item.DiscountedPrice,
+      };
 
-  // Tính toán tổng giá dựa trên giá *hiện tại* của khóa học (không phải giá lúc thêm)
-  // Giá lúc thêm (PriceAtAddition) chỉ để tham khảo hoặc xử lý nếu giá thay đổi
-  items.forEach((item) => {
-    totalOriginalPrice += item.OriginalPrice || 0;
-    finalPrice += (item.DiscountedPrice ?? item.OriginalPrice) || 0; // Ưu tiên giá giảm
-  });
+      const pricing = await pricingUtil.createPricingObject(
+        itemAsCourse,
+        targetCurrency
+      );
 
-  const totalDiscount = totalOriginalPrice - finalPrice;
+      // Cộng dồn tổng tiền dựa trên giá hiển thị (display price)
+      totalOriginalPrice = totalOriginalPrice.plus(
+        pricing.display.originalPrice
+      );
+      finalPrice = finalPrice.plus(
+        pricing.display.discountedPrice ?? pricing.display.originalPrice
+      );
+
+      return {
+        cartItemId: item.CartItemID,
+        courseId: item.CourseID,
+        courseName: item.CourseName,
+        slug: item.Slug,
+        thumbnailUrl: item.ThumbnailUrl,
+        instructorName: item.InstructorName,
+        addedAt: item.AddedAt,
+        pricing, // <<< Dùng cấu trúc pricing mới
+      };
+    })
+  );
+
+  const totalDiscount = totalOriginalPrice.minus(finalPrice);
+  const displayCurrency =
+    itemsWithPricing.length > 0
+      ? itemsWithPricing[0].pricing.display.currency
+      : targetCurrency;
 
   return {
     cartId: cart.CartID,
-    items: items.map((item) => ({
-      // Có thể format lại dữ liệu trả về
-      cartItemId: item.CartItemID,
-      courseId: item.CourseID,
-      courseName: item.CourseName,
-      slug: item.Slug,
-      thumbnailUrl: item.ThumbnailUrl,
-      instructorName: item.InstructorName,
-      currentPrice: item.DiscountedPrice ?? item.OriginalPrice, // Giá hiện tại
-      originalPrice: item.OriginalPrice, // Giá gốc
-      priceAtAddition: item.PriceAtAddition, // Giá lúc thêm
-      addedAt: item.AddedAt,
-    })),
+    items: itemsWithPricing,
     summary: {
-      totalOriginalPrice,
-      totalDiscount, // Tính tổng giảm giá dựa trên giá hiện tại
-      finalPrice, // Tổng tiền cuối cùng (chưa áp dụng mã giảm giá)
-      itemCount: items.length,
+      currency: displayCurrency,
+      totalOriginalPrice: totalOriginalPrice.toDP(2).toNumber(),
+      totalDiscount: totalDiscount.toDP(2).toNumber(),
+      finalPrice: finalPrice.toDP(2).toNumber(),
+      itemCount: itemsWithPricing.length,
     },
   };
+};
+
+/**
+ * Xóa toàn bộ sản phẩm trong giỏ hàng của người dùng.
+ * @param {number} accountId
+ * @returns {Promise<void>}
+ */
+const clearMyCart = async (accountId) => {
+  // Lấy giỏ hàng của user (nếu chưa có thì sẽ được tạo, nhưng sẽ không có item nào để xóa)
+  const cart = await getUserCart(accountId);
+
+  // Gọi repository để xóa tất cả các item liên quan đến cartId
+  const deletedCount = await cartRepository.clearCart(cart.CartID);
+
+  logger.info(
+    `Cleared ${deletedCount} items from cart ${cart.CartID} for user ${accountId}.`
+  );
+
+  // Service không cần trả về gì, controller sẽ gọi viewCart để lấy lại giỏ hàng rỗng.
 };
 
 module.exports = {
@@ -146,4 +187,5 @@ module.exports = {
   addCourseToCart,
   removeCourseFromCart,
   viewCart,
+  clearMyCart,
 };

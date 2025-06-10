@@ -15,7 +15,12 @@ const removeCourseFromCart = {
   }),
 };
 
+const clearCart = {
+  // Rỗng vì không có gì cần validate
+};
+
 module.exports = {
   addCourseToCart,
   removeCourseFromCart,
+  clearCart,
 };

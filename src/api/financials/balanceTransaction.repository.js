@@ -125,10 +125,11 @@ const findInstructorTransactions = async (accountId, options = {}) => {
     selectFields += `
             ,oi.PriceAtOrder as OrderItemPriceAtOrder
             ,c.CourseID, c.CourseName, c.Slug as CourseSlug
-            ,o.OrderID, o.OrderDate
+            ,o.OrderID, o.OrderDate, o.PaymentID
             ,cust_acc.Email as CustomerEmail -- Email người mua
             ,p_out.Amount as PayoutAmount, p_out.PayoutStatusID, p_out.CompletedAt as PayoutCompletedDate,
              pm_payout.MethodName as PayoutMethodName -- Phương thức chi trả
+            ,cp.PaymentStatusID as CoursePaymentStatusID -- Trạng thái thanh toán của CoursePayment
         `;
     fromJoins += `
             LEFT JOIN OrderItems oi ON ibt.OrderItemID = oi.OrderItemID AND ibt.Type = 'CREDIT_SALE'
@@ -137,6 +138,7 @@ const findInstructorTransactions = async (accountId, options = {}) => {
             LEFT JOIN Accounts cust_acc ON o.AccountID = cust_acc.AccountID -- Lấy thông tin người mua
             LEFT JOIN Payouts p_out ON ibt.RelatedEntityID = p_out.PayoutID AND ibt.RelatedEntityType = 'Payout'
             LEFT JOIN PaymentMethods pm_payout ON p_out.PaymentMethodID = pm_payout.MethodID
+            LEFT JOIN CoursePayments cp ON o.PaymentID = cp.PaymentID -- Nối tới CoursePayments để lấy PaymentStatusID
         `;
 
     const whereClauses = ['ibt.AccountID = @AccountID'];
@@ -481,6 +483,7 @@ const getRevenueByCourse = async (accountId, options = {}) => {
     return result.recordset.map((row) => ({
       courseId: row.CourseID,
       courseName: row.CourseName,
+      courseSlug: row.CourseSlug,
       totalSalesCount: row.TotalSalesCount,
       totalRevenue: parseFloat(row.TotalRevenue.toString()),
       netEarnings: parseFloat(row.NetEarnings.toString()),
@@ -502,4 +505,5 @@ module.exports = {
   getTotalLifetimeEarnings,
   getMonthlyNetEarnings,
   getMonthlyTotalRevenue,
+  getRevenueByCourse,
 };

@@ -25,16 +25,16 @@ const createOrder = async (orderData, transaction) => {
     orderData.DiscountAmount || 0
   );
   request.input('FinalAmount', sql.Decimal(18, 4), orderData.FinalAmount);
-  request.input('PromotionID', sql.Int, orderData.PromotionID); // Có thể NULL
-  request.input('OrderStatus', sql.VarChar, orderData.OrderStatus); // Thường là PENDING_PAYMENT
-  // OrderDate dùng default GETDATE()
+  request.input('CurrencyID', sql.VarChar, orderData.CurrencyID);
+  request.input('PromotionID', sql.Int, orderData.PromotionID);
+  request.input('OrderStatus', sql.VarChar, orderData.OrderStatus);
 
   try {
     const result = await request.query(`
-            INSERT INTO Orders (AccountID, OriginalTotalPrice, DiscountAmount, FinalAmount, PromotionID, OrderStatus)
-            OUTPUT Inserted.*
-            VALUES (@AccountID, @OriginalTotalPrice, @DiscountAmount, @FinalAmount, @PromotionID, @OrderStatus);
-        `);
+        INSERT INTO Orders (AccountID, OriginalTotalPrice, DiscountAmount, FinalAmount, CurrencyID, PromotionID, OrderStatus)
+        OUTPUT Inserted.*
+        VALUES (@AccountID, @OriginalTotalPrice, @DiscountAmount, @FinalAmount, @CurrencyID, @PromotionID, @OrderStatus);
+    `);
     return result.recordset[0];
   } catch (error) {
     logger.error('Error creating order:', error);
@@ -173,12 +173,12 @@ const findOrderByIdWithDetails = async (orderId) => {
     const orderRequest = pool.request();
     orderRequest.input('OrderID', sql.BigInt, orderId);
     const orderResult = await orderRequest.query(`
-             SELECT o.*, p.PaymentStatusID, pm.MethodName as PaymentMethodName
-             FROM Orders o
-             LEFT JOIN CoursePayments p ON o.PaymentID = p.PaymentID
-             LEFT JOIN PaymentMethods pm ON p.PaymentMethodID = pm.MethodID
-             WHERE o.OrderID = @OrderID;
-        `);
+        SELECT o.*, p.PaymentStatusID, pm.MethodName as PaymentMethodName
+        FROM Orders o
+        LEFT JOIN CoursePayments p ON o.PaymentID = p.PaymentID
+        LEFT JOIN PaymentMethods pm ON p.PaymentMethodID = pm.MethodID
+        WHERE o.OrderID = @OrderID;
+    `);
     const order = orderResult.recordset[0];
     if (!order) return null;
 
@@ -241,16 +241,18 @@ const findOrdersByAccountId = async (accountId, options = {}) => {
     request.input('Limit', sql.Int, limit);
     request.input('Offset', sql.Int, offset);
     const dataResult = await request.query(`
-             SELECT
-                  o.OrderID, o.OrderDate, o.FinalAmount, o.OrderStatus,
-                  p.PaymentStatusID,
-                  pm.MethodName as PaymentMethodName,
-                  (SELECT COUNT(*) FROM OrderItems oi WHERE oi.OrderID = o.OrderID) as ItemCount
-                  -- Lấy thêm các trường cần thiết cho list view
-             ${commonQuery}
-             ORDER BY o.OrderDate DESC
-             OFFSET @Offset ROWS FETCH NEXT @Limit ROWS ONLY;
-        `);
+        SELECT
+          o.OrderID, o.OrderDate, o.FinalAmount, o.CurrencyID, o.OrderStatus,
+          p.PaymentStatusID,
+          pm.MethodName as PaymentMethodName,
+          (SELECT COUNT(*) FROM OrderItems oi WHERE oi.OrderID = o.OrderID) as ItemCount
+        FROM Orders o
+        LEFT JOIN CoursePayments p ON o.PaymentID = p.PaymentID
+        LEFT JOIN PaymentMethods pm ON p.PaymentMethodID = pm.MethodID
+        ${whereCondition}
+        ORDER BY o.OrderDate DESC
+        OFFSET @Offset ROWS FETCH NEXT @Limit ROWS ONLY;
+    `);
 
     return { orders: dataResult.recordset, total };
   } catch (error) {

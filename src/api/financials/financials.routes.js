@@ -77,7 +77,7 @@ router.patch(
 router.get(
   '/payout-activity', // Đổi tên route cho rõ nghĩa "hoạt động"
   authenticate,
-  authorize([Roles.INSTRUCTOR]),
+  authorize([Roles.INSTRUCTOR, Roles.SUPERADMIN]),
   validate(financialsValidation.getWithdrawalActivityHistory),
   financialsController.getWithdrawalActivityHistory
 );
@@ -86,7 +86,7 @@ router.get(
 router.get(
   '/transactions', // Hoặc giữ '/revenue-details' nếu muốn
   authenticate,
-  authorize([Roles.INSTRUCTOR]),
+  authorize([Roles.INSTRUCTOR, Roles.SUPERADMIN]),
   validate(financialsValidation.getMyTransactions), // Validation mới
   financialsController.getMyTransactions // Controller mới
 );
@@ -94,7 +94,7 @@ router.get(
 router.get(
   '/monthly-earnings',
   authenticate,
-  authorize([Roles.INSTRUCTOR]),
+  authorize([Roles.INSTRUCTOR, Roles.SUPERADMIN]),
   validate(financialsValidation.getMonthlyEarnings),
   financialsController.getMyMonthlyEarnings
 );
@@ -102,7 +102,7 @@ router.get(
 router.get(
   '/revenue-by-course',
   authenticate,
-  authorize([Roles.INSTRUCTOR]),
+  authorize([Roles.INSTRUCTOR, Roles.SUPERADMIN]),
   validate(financialsValidation.getRevenueByCourse),
   financialsController.getMyRevenueByCourse
 );

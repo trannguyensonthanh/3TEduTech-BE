@@ -347,6 +347,35 @@ const deletePostById = async (postId) => {
   }
 };
 
+/**
+ * Cập nhật trạng thái IsClosed của thread.
+ * @param {number} threadId
+ * @param {boolean} isClosed
+ * @returns {Promise<object|null>} Thread đã cập nhật hoặc null nếu không tìm thấy.
+ */
+const updateThreadClosedStatus = async (threadId, isClosed) => {
+  try {
+    const pool = await getConnection();
+    const request = pool.request();
+    request.input('ThreadID', sql.BigInt, threadId);
+    request.input('IsClosed', sql.Bit, isClosed);
+    request.input('UpdatedAt', sql.DateTime2, new Date()); // Cập nhật luôn UpdatedAt
+    const result = await request.query(`
+            UPDATE DiscussionThreads
+            SET IsClosed = @IsClosed, UpdatedAt = @UpdatedAt
+            OUTPUT Inserted.*
+            WHERE ThreadID = @ThreadID;
+        `);
+    return result.recordset[0] || null;
+  } catch (error) {
+    logger.error(
+      `Error updating IsClosed status for thread ${threadId}:`,
+      error
+    );
+    throw error;
+  }
+};
+
 module.exports = {
   createThread,
   findThreadById,
@@ -358,4 +387,5 @@ module.exports = {
   findPostsByThreadId,
   updatePostById,
   deletePostById,
+  updateThreadClosedStatus,
 };

@@ -1,7 +1,7 @@
 // File: src/api/financials/financials.service.js
 const { isNaN } = require('lodash');
 const httpStatus = require('http-status').status;
-const paymentSplitRepository = require('../payments/paymentSplit.repository');
+
 const payoutRepository = require('./payout.repository');
 const userRepository = require('../users/users.repository'); // Lấy profile instructor
 const settingRepository = require('../settings/settings.repository');
@@ -230,7 +230,6 @@ const requestWithdrawal = async (instructorId, requestData) => {
   const withdrawalRequest =
     await payoutRepository.createWithdrawalRequest(newRequestData);
 
-  // Gửi thông báo cho Admin (như cũ)
   try {
     const instructorProfile =
       await userRepository.findUserProfileById(instructorId);
@@ -862,7 +861,7 @@ const getMyTransactions = async (instructorId, options = {}) => {
     } else if (t.Type === 'DEBIT_WITHDRAWAL' && t.PayoutMethodName) {
       detailedDescription = `Rút tiền thành công qua ${t.PayoutMethodName} (Yêu cầu Payout #${t.RelatedEntityID})`;
     } // Thêm các case khác nếu cần (REFUND, FEE,...)
-
+    console.log(t);
     return {
       transactionId: t.TransactionID,
       transactionTimestamp: t.TransactionTimestamp,
@@ -877,6 +876,7 @@ const getMyTransactions = async (instructorId, options = {}) => {
       courseId: t.Type === 'CREDIT_SALE' ? t.CourseID : null,
       courseName: t.Type === 'CREDIT_SALE' ? t.CourseName : null,
       currentBalanceAfterTransaction: parseFloat(t.CurrentBalance.toString()),
+      status: t.PayoutStatusID || t.CoursePaymentStatusID,
     };
   });
 
@@ -992,6 +992,7 @@ const getMyRevenueByCourse = async (instructorId, queryParams) => {
     return {
       courses: coursesWithPercentage,
       currencyId: Currency.VND, // Giả sử VND
+      totalCourses: coursesWithPercentage.length,
     };
   } catch (error) {
     logger.error(

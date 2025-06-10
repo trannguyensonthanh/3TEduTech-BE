@@ -40,7 +40,7 @@ const validatePromotionCode = catchAsync(async (req, res) => {
   const { promotionCode } = req.body;
   // Cần lấy tổng tiền giỏ hàng hiện tại của user
   const accountId = req.user.id;
-  const cartDetails = await cartService.viewCart(accountId);
+  const cartDetails = await cartService.viewCart(accountId, req.targetCurrency);
   const orderTotal = cartDetails.summary.finalPrice; // Dùng final price của cart
 
   // Chỉ validate, không áp dụng ngay
@@ -56,16 +56,13 @@ const validatePromotionCode = catchAsync(async (req, res) => {
     promotionId: validationResult.promotionId,
     message: `Mã hợp lệ. Bạn được giảm ${validationResult.discountAmount}.`,
   });
-  // Nếu không hợp lệ, service sẽ throw ApiError, middleware lỗi sẽ bắt
 });
 
 module.exports = {
-  // Admin
   createPromotion,
   getPromotions,
   getPromotion,
   updatePromotion,
   deactivatePromotion,
-  // User/Public (Optional)
   validatePromotionCode,
 };

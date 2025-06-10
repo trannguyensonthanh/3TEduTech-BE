@@ -21,14 +21,18 @@ router.post(
   cartController.addCourseToCart
 );
 
+// Xóa toàn bộ giỏ hàng
+router.delete(
+  '/',
+  validate(cartValidation.clearCart),
+  cartController.clearMyCart
+);
+
 // Xóa khóa học khỏi giỏ
 router.delete(
   '/courses/:courseId', // Dùng courseId trong params
   validate(cartValidation.removeCourseFromCart),
   cartController.removeCourseFromCart
 );
-
-// Có thể thêm route PATCH để cập nhật số lượng nếu giỏ hàng hỗ trợ (hiện tại không)
-// Có thể thêm route DELETE / để xóa toàn bộ giỏ hàng
 
 module.exports = router;

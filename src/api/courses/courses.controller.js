@@ -111,14 +111,23 @@ const getCourses = catchAsync(async (req, res) => {
   }
 
   // Truyền req.user để service xử lý quyền xem
-  const result = await courseService.getCourses(filters, options, req.user);
+  const result = await courseService.getCourses(
+    filters,
+    options,
+    req.user,
+    req.targetCurrency
+  );
 
   res.status(httpStatus.OK).send(result);
 });
 
 const getCourse = catchAsync(async (req, res) => {
   // Truyền req.user để service xử lý quyền xem
-  const course = await courseService.getCourseBySlug(req.params.slug, req.user);
+  const course = await courseService.getCourseBySlug(
+    req.params.slug,
+    req.user,
+    req.targetCurrency
+  );
   res.status(httpStatus.OK).send(course);
 });
 

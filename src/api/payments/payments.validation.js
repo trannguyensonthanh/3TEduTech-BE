@@ -16,8 +16,16 @@ const vnpayIpn = {
   query: Joi.object().unknown(true), // Cho phép tất cả query params từ VNPay
 };
 
+const createCryptoInvoice = {
+  body: Joi.object().keys({
+    orderId: Joi.number().integer().required(),
+    cryptoCurrency: Joi.string().required().trim().lowercase(), // vd: usdttrc20
+  }),
+};
+
 module.exports = {
   createVnpayUrl,
   vnpayReturn,
   vnpayIpn,
+  createCryptoInvoice,
 };

@@ -1,12 +1,10 @@
 const dotenv = require('dotenv');
 const path = require('path');
-const Joi = require('joi'); // Cài đặt Joi: npm install joi
+const Joi = require('joi');
 
-// Load file .env tương ứng với môi trường
-const envPath = path.join(__dirname, '../../.env'); // Luôn load file .env gốc
+const envPath = path.join(__dirname, '../../.env');
 dotenv.config({ path: envPath });
 
-// Định nghĩa schema để validate biến môi trường
 const envVarsSchema = Joi.object()
   .keys({
     FRONTEND_URL: Joi.string()
@@ -16,7 +14,6 @@ const envVarsSchema = Joi.object()
       .valid('production', 'development', 'test')
       .required(),
     PORT: Joi.number().default(5000),
-    // Database
     DB_HOST: Joi.string().required().description('Database host'),
     DB_PORT: Joi.number().default(1433).description('Database port'),
     DB_USER: Joi.string().required().description('Database username'),
@@ -28,7 +25,6 @@ const envVarsSchema = Joi.object()
     DB_TRUST_SERVER_CERTIFICATE: Joi.boolean()
       .default(false)
       .description('Trust server certificate'),
-    // JWT
     JWT_SECRET: Joi.string().required().description('JWT secret key'),
     JWT_ACCESS_EXPIRATION_MINUTES: Joi.number()
       .default(60)
@@ -36,34 +32,26 @@ const envVarsSchema = Joi.object()
     JWT_REFRESH_EXPIRATION_DAYS: Joi.number()
       .default(30)
       .description('Days after which refresh tokens expire'),
-    // Mailer (optional)
     MAIL_HOST: Joi.string().description('Server for sending emails'),
     MAIL_PORT: Joi.number().description('Port for email server'),
-    MAIL_USER: Joi.string().description(
-      'Username for email server (e.g., "apikey")'
-    ), // Thêm gợi ý
-    MAIL_PASSWORD: Joi.string().description(
-      'Password for email server (e.g., SendGrid API Key)'
-    ), // Thêm gợi ý
+    MAIL_USER: Joi.string().description('Username for email server'),
+    MAIL_PASSWORD: Joi.string().description('Password for email server'),
     MAIL_FROM: Joi.string().description(
-      'Email address from which emails are sent (e.g., "App Name <noreply@domain.com>")'
-    ), // Thêm gợi ý
+      'Email address from which emails are sent'
+    ),
     MAIL_ENCRYPTION: Joi.string()
       .valid('none', 'tls', 'ssl')
       .default('tls')
-      .description('Email encryption method'), // Thêm encryption
-    // Cloudinary (optional)
+      .description('Email encryption method'),
     CLOUDINARY_CLOUD_NAME: Joi.string().description('Cloudinary Cloud Name'),
     CLOUDINARY_API_KEY: Joi.string().description('Cloudinary API Key'),
     CLOUDINARY_API_SECRET: Joi.string().description('Cloudinary API Secret'),
-    // VNPay (optional)
     VNP_TMNCODE: Joi.string().description('VNPay Terminal Code'),
     VNP_HASHSECRET: Joi.string().description('VNPay Hash Secret'),
     VNP_URL: Joi.string().uri().description('VNPay Payment Gateway URL'),
-    VNP_API_URL: Joi.string().uri().description('VNPay API URL'), // Thêm cái này
+    VNP_API_URL: Joi.string().uri().description('VNPay API URL'),
     VNP_RETURN_URL: Joi.string().uri().description('VNPay Return URL'),
     VNP_IPN_URL: Joi.string().uri().description('VNPay IPN URL'),
-    // Google OAuth (optional)
     GOOGLE_CLIENT_ID: Joi.string().description('Google OAuth Client ID'),
     GOOGLE_CLIENT_SECRET: Joi.string().description(
       'Google OAuth Client Secret'
@@ -71,16 +59,19 @@ const envVarsSchema = Joi.object()
     GOOGLE_CALLBACK_URL: Joi.string()
       .uri()
       .description('Google OAuth Callback URL'),
-    // Facebook OAuth (optional)
     FACEBOOK_APP_ID: Joi.string().description('Facebook App ID'),
     FACEBOOK_APP_SECRET: Joi.string().description('Facebook App Secret'),
     FACEBOOK_CALLBACK_URL: Joi.string()
       .uri({ scheme: ['https'] })
-      .description('Facebook OAuth Callback URL (HTTPS)'), // Bắt buộc HTTPS
+      .description('Facebook OAuth Callback URL (HTTPS)'),
+    NOWPAYMENTS_API_KEY: Joi.string().description('NOWPayments API Key'),
+    NOWPAYMENTS_IPN_SECRET: Joi.string().description('NOWPayments IPN Secret'),
+    NOWPAYMENTS_API_URL: Joi.string()
+      .uri()
+      .default('https://api.nowpayments.io/v1'),
   })
-  .unknown(); // Cho phép các biến môi trường khác không được định nghĩa trong schema
+  .unknown();
 
-// Validate biến môi trường
 const { value: envVars, error } = envVarsSchema
   .prefs({ errors: { label: 'key' } })
   .validate(process.env);
@@ -89,8 +80,8 @@ if (error) {
   throw new Error(`Config validation error: ${error.message}`);
 }
 
-// Export cấu hình đã được validate
 module.exports = {
+  serverUrl: envVars.SERVER_URL,
   frontendUrl: envVars.FRONTEND_URL,
   env: envVars.NODE_ENV,
   port: envVars.PORT,
@@ -101,9 +92,8 @@ module.exports = {
     password: envVars.DB_PASSWORD,
     database: envVars.DB_NAME,
     options: {
-      encrypt: envVars.DB_ENCRYPT, // Bắt buộc cho Azure SQL
-      trustServerCertificate: envVars.DB_TRUST_SERVER_CERTIFICATE, // Đặt là true nếu dùng self-signed cert (dev)
-      // Các options khác nếu cần: instanceName, connectionTimeout, requestTimeout...
+      encrypt: envVars.DB_ENCRYPT,
+      trustServerCertificate: envVars.DB_TRUST_SERVER_CERTIFICATE,
     },
   },
   jwt: {
@@ -111,23 +101,17 @@ module.exports = {
     accessExpirationMinutes: envVars.JWT_ACCESS_EXPIRATION_MINUTES,
     refreshExpirationDays: envVars.JWT_REFRESH_EXPIRATION_DAYS,
     emailVerificationTokenExpiresMinutes: 60 * 24,
-    // Có thể thêm các cấu hình khác: issuer, audience...
   },
   mailer: {
     host: envVars.MAIL_HOST,
     port: envVars.MAIL_PORT,
     auth: {
-      // Auth object theo cấu trúc của Nodemailer
       user: envVars.MAIL_USER,
       pass: envVars.MAIL_PASSWORD,
     },
     from: envVars.MAIL_FROM,
-    secure: envVars.MAIL_ENCRYPTION === 'ssl', // true for 465, false for other ports
-    requireTLS: envVars.MAIL_ENCRYPTION === 'tls', // Require TLS for 587
-    // Có thể thêm các options khác của Nodemailer nếu cần
-    // tls: {
-    //     ciphers:'SSLv3' // Ví dụ nếu cần cấu hình TLS cụ thể
-    // }
+    secure: envVars.MAIL_ENCRYPTION === 'ssl',
+    requireTLS: envVars.MAIL_ENCRYPTION === 'tls',
   },
   cloudinary: {
     cloud_name: envVars.CLOUDINARY_CLOUD_NAME,
@@ -138,9 +122,9 @@ module.exports = {
     tmnCode: envVars.VNP_TMNCODE,
     hashSecret: envVars.VNP_HASHSECRET,
     url: envVars.VNP_URL,
-    apiUrl: envVars.VNP_API_URL, // Thêm cái này
+    apiUrl: envVars.VNP_API_URL,
     returnUrl: envVars.VNP_RETURN_URL,
-    ipnUrl: envVars.VNP_IPN_URL, // Thêm cái này
+    ipnUrl: envVars.VNP_IPN_URL,
   },
   googleAuth: {
     clientID: envVars.GOOGLE_CLIENT_ID,
@@ -152,6 +136,20 @@ module.exports = {
     clientSecret: envVars.FACEBOOK_APP_SECRET,
     callbackURL: envVars.FACEBOOK_CALLBACK_URL,
   },
-  youtubeApiKey: process.env.YOUTUBE_API_KEY, // Thêm API Key cho YouTube
-  appName: '3TEduTech', // Tên ứng dụng của bạn
+  youtubeApiKey: process.env.YOUTUBE_API_KEY,
+  appName: '3TEduTech',
+  settings: {
+    baseCurrency: 'VND',
+  },
+  stripe: {
+    publicKey: envVars.STRIPE_PUBLIC_KEY,
+    secretKey: envVars.STRIPE_SECRET_KEY,
+    webhookSecret: envVars.STRIPE_WEBHOOK_SECRET,
+  },
+  exchangeRateApiKey: envVars.EXCHANGE_RATE_API_KEY,
+  nowPayments: {
+    apiKey: envVars.NOWPAYMENTS_API_KEY,
+    ipnSecret: envVars.NOWPAYMENTS_IPN_SECRET,
+    apiUrl: envVars.NOWPAYMENTS_API_URL,
+  },
 };

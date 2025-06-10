@@ -3,8 +3,8 @@ const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
 const httpStatus = require('http-status').status;
-
 const cookieParser = require('cookie-parser');
+const { webhookRouter } = require('./api/orders/orders.routes');
 const passport = require('./config/passport');
 const config = require('./config'); // Sẽ tạo file config
 const logger = require('./utils/logger'); // Sẽ tạo logger
@@ -13,7 +13,7 @@ const {
   errorHandler,
 } = require('./middlewares/error.middleware'); // Sẽ tạo middleware lỗi
 const ApiError = require('./core/errors/ApiError'); // Sẽ tạo lớp lỗi
-
+const currencyHandler = require('./middlewares/currency.middleware');
 // --- Khởi tạo Express App ---
 const app = express();
 
@@ -41,16 +41,39 @@ app.use(helmet());
 
 // Cho phép Cross-Origin Resource Sharing (CORS)
 // Cấu hình chặt chẽ hơn cho production nếu cần
+const allowedOrigins = [
+  'http://192.168.87.105:8080', // Cái cũ
+  'https://localhost:8080', // Cái https
+  'http://localhost:8080', // THÊM CÁI MỚI (http)
+];
+
 const corsOptions = {
-  origin: 'http://localhost:8080', // Replace with your frontend's URL
-  credentials: true, // Allow credentials (cookies, authorization headers, etc.)
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true,
+  allowedHeaders: [
+    'Content-Type',
+    'Authorization',
+    'X-Requested-With',
+    'X-Currency', // <-- THÊM HEADER NÀY VÀO
+  ],
 };
+
+// Đảm bảo dòng này đang được BẬT
 app.use(cors(corsOptions));
-app.options(/(.*)/, cors(corsOptions)); // Cho phép pre-flight requests
+// app.options(/(.*)/, cors(corsOptions)); // Cho phép pre-flight requests
+
 // *** SỬ DỤNG COOKIE PARSER ***
 // Middleware này cần đặt TRƯỚC các route sử dụng req.cookies
 app.use(cookieParser());
+app.use(currencyHandler);
 // Parse JSON request body
+app.use('/webhooks', webhookRouter); // Gắn webhook router vào /webhooks
 app.use(express.json({ limit: '10mb' })); // Giới hạn kích thước body (điều chỉnh nếu cần)
 
 // Parse URL-encoded request body
@@ -85,7 +108,7 @@ const { lessonRouter } = require('./api/lessons/lessons.routes');
 const quizRoutes = require('./api/quizzes/quizzes.routes'); // Routes cho student actions
 const { questionRouter } = require('./api/lessons/lessons.routes'); // Routes cho question management
 const cartRoutes = require('./api/carts/carts.routes'); // Thêm
-const { orderRouter, webhookRouter } = require('./api/orders/orders.routes'); // Thêm
+const { orderRouter } = require('./api/orders/orders.routes'); // Thêm
 const paymentRoutes = require('./api/payments/payments.routes');
 const financialsRoutes = require('./api/financials/financials.routes');
 const promotionRoutes = require('./api/promotions/promotions.routes');
@@ -97,6 +120,8 @@ const settingsRoutes = require('./api/settings/settings.routes');
 const notificationRoutes = require('./api/notifications/notifications.routes');
 const approvalRequestRoutes = require('./api/approvalRequests/approvalRequests.routes');
 const languageRoutes = require('./api/languages/languages.routes');
+const currencyRoutes = require('./api/currencies/currencies.routes');
+const exchangeRateRoutes = require('./api/exchangeRates/exchangeRates.routes');
 
 apiV1Router.use('/auth', authRoutes); // Gắn route auth vào /v1/auth
 apiV1Router.use('/users', userRoutes); // Gắn route users vào /v1/users
@@ -122,9 +147,11 @@ apiV1Router.use('/settings', settingsRoutes);
 apiV1Router.use('/notifications', notificationRoutes);
 apiV1Router.use('/approval-requests', approvalRequestRoutes);
 apiV1Router.use('/languages', languageRoutes);
+apiV1Router.use('/currencies', currencyRoutes);
+apiV1Router.use('/exchange-rates', exchangeRateRoutes);
 // Gắn router V1 vào đường dẫn /v1
 app.use('/v1', apiV1Router);
-app.use('/webhooks', webhookRouter); // Gắn webhook router vào /webhooks
+
 // --- Error Handling Middlewares ---
 
 // Middleware bắt các route không tồn tại (404) sau khi đã thử tất cả các route V1

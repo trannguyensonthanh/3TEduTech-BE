@@ -168,8 +168,25 @@ const updatePaymentStatus = async (
   }
 };
 
+const findPaymentByExternalId = async (externalId, methodId) => {
+  try {
+    const pool = await getConnection();
+    const request = pool.request();
+    request.input('ExternalTransactionID', sql.VarChar, externalId);
+    request.input('PaymentMethodID', sql.VarChar, methodId);
+    const result = await request.query(
+      'SELECT * FROM CoursePayments WHERE ExternalTransactionID = @ExternalTransactionID AND PaymentMethodID = @PaymentMethodID;'
+    );
+    return result.recordset[0] || null;
+  } catch (error) {
+    logger.error(`Error finding payment by external ID ${externalId}:`, error);
+    throw error;
+  }
+};
+
 module.exports = {
   createCoursePayment,
   findPaymentByOrderId,
   updatePaymentStatus,
+  findPaymentByExternalId,
 };

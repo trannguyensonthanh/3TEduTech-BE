@@ -25,6 +25,12 @@ router
     discussionController.deleteThread
   );
 
+router.patch(
+  '/threads/:threadId/status',
+  validate(discussionValidation.updateThreadStatus),
+  discussionController.updateThreadStatus
+);
+
 // --- Routes thao tác trên Post cụ thể ---
 router
   .route('/posts/:postId')

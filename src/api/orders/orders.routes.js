@@ -2,6 +2,7 @@ const express = require('express');
 const validate = require('../../middlewares/validation.middleware');
 const orderValidation = require('./orders.validation');
 const orderController = require('./orders.controller');
+const paymentController = require('../payments/payments.controller');
 const { authenticate } = require('../../middlewares/auth.middleware');
 
 const router = express.Router();
@@ -33,7 +34,29 @@ router.get(
 const webhookRouter = express.Router();
 webhookRouter.post('/payment-callback', orderController.handlePaymentWebhook);
 webhookRouter.get('/payment-callback', orderController.handlePaymentWebhook);
+webhookRouter.post(
+  '/stripe',
+  express.raw({ type: 'application/json' }),
+  orderController.handleStripeWebhook
+);
+const nowPaymentsRawBody = (req, res, next) => {
+  let data = '';
+  req.on('data', (chunk) => {
+    data += chunk;
+  });
+  req.on('end', () => {
+    req.rawBody = data; // Gắn dữ liệu thô vào request
+    next();
+  });
+};
 
+webhookRouter.post(
+  '/crypto',
+  express.raw({ type: 'application/json' }),
+  nowPaymentsRawBody, // Chạy middleware lấy raw body trước
+
+  paymentController.handleCryptoWebhook
+);
 module.exports = {
   orderRouter: router,
   webhookRouter, // Export riêng webhook router

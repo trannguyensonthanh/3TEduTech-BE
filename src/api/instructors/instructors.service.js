@@ -653,6 +653,8 @@ const getMyFinancialOverview = async (instructorId) => {
       currentBalance: parseFloat(currentBalance.toString()), // Đảm bảo là số
       totalLifetimeEarnings: parseFloat(totalLifetimeEarnings.toString()),
       pendingPayoutsAmount: parseFloat(pendingPayoutsAmount.toString()),
+      minWithdrawalAmount: 1000000, // Giả sử là 1 triệu VND
+      revenueSharePercentage: 0.7, // Giả sử là 70%
       totalStudentsLifetime,
       currencyId: Currency.VND, // Giả sử VND là tiền tệ chính
     };

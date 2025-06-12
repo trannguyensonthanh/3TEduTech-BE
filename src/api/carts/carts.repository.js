@@ -4,6 +4,7 @@ const httpStatus = require('http-status').status;
 const { getConnection, sql } = require('../../database/connection');
 const logger = require('../../utils/logger');
 const ApiError = require('../../core/errors/ApiError');
+
 /**
  * Tìm hoặc tạo giỏ hàng cho một tài khoản.
  * @param {number} accountId
@@ -118,7 +119,7 @@ const findCartItemByCourse = async (cartId, courseId) => {
 };
 
 /**
- * Xóa item khỏi giỏ hàng.
+ * Xóa item khỏi giỏ hàng bằng CartItemID.
  * @param {number} cartItemId
  * @param {object} [transaction=null]
  * @returns {Promise<number>} - Số dòng bị ảnh hưởng.

@@ -1,6 +1,9 @@
-// File: src/api/currencies/currencies.validation.js
+// Validation schema for creating a currency
 const Joi = require('joi');
 
+/**
+ * Validation for creating a currency
+ */
 const createCurrency = {
   body: Joi.object().keys({
     currencyId: Joi.string().required().max(10).trim().uppercase(),
@@ -10,6 +13,9 @@ const createCurrency = {
   }),
 };
 
+/**
+ * Validation for getting currencies (with query params)
+ */
 const getCurrencies = {
   query: Joi.object().keys({
     page: Joi.number().integer().min(1),
@@ -18,6 +24,9 @@ const getCurrencies = {
   }),
 };
 
+/**
+ * Validation for updating a currency
+ */
 const updateCurrency = {
   params: Joi.object().keys({
     currencyId: Joi.string().required().max(10),
@@ -31,6 +40,9 @@ const updateCurrency = {
     .min(1),
 };
 
+/**
+ * Validation for deleting a currency
+ */
 const deleteCurrency = {
   params: Joi.object().keys({
     currencyId: Joi.string().required().max(10),

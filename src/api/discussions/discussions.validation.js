@@ -2,6 +2,9 @@
 
 const Joi = require('joi');
 
+/**
+ * Validate create thread request
+ */
 const createThread = {
   body: Joi.object().keys({
     courseId: Joi.number().integer().required(),
@@ -10,6 +13,9 @@ const createThread = {
   }),
 };
 
+/**
+ * Validate get threads request
+ */
 const getThreads = {
   params: Joi.object()
     .keys({
@@ -28,6 +34,9 @@ const getThreads = {
   }),
 };
 
+/**
+ * Validate update thread request
+ */
 const updateThread = {
   params: Joi.object().keys({
     threadId: Joi.number().integer().required(),
@@ -37,12 +46,18 @@ const updateThread = {
   }),
 };
 
+/**
+ * Validate delete thread request
+ */
 const deleteThread = {
   params: Joi.object().keys({
     threadId: Joi.number().integer().required(),
   }),
 };
 
+/**
+ * Validate create post request
+ */
 const createPost = {
   params: Joi.object().keys({
     threadId: Joi.number().integer().required(),
@@ -53,6 +68,9 @@ const createPost = {
   }),
 };
 
+/**
+ * Validate get posts request
+ */
 const getPosts = {
   params: Joi.object().keys({
     threadId: Joi.number().integer().required(),
@@ -63,6 +81,9 @@ const getPosts = {
   }),
 };
 
+/**
+ * Validate update post request
+ */
 const updatePost = {
   params: Joi.object().keys({
     postId: Joi.number().integer().required(),
@@ -72,12 +93,18 @@ const updatePost = {
   }),
 };
 
+/**
+ * Validate delete post request
+ */
 const deletePost = {
   params: Joi.object().keys({
     postId: Joi.number().integer().required(),
   }),
 };
 
+/**
+ * Validate update thread status request
+ */
 const updateThreadStatus = {
   params: Joi.object().keys({
     threadId: Joi.number().integer().required(),

@@ -1,4 +1,5 @@
 // File: src/api/currencies/currencies.routes.js
+
 const express = require('express');
 const validate = require('../../middlewares/validation.middleware');
 const currencyValidation = require('./currencies.validation');
@@ -13,6 +14,9 @@ const router = express.Router();
 
 router.use(authenticate, authorize([Roles.ADMIN, Roles.SUPERADMIN]));
 
+/**
+ * Create a new currency and get list of currencies
+ */
 router
   .route('/')
   .post(
@@ -24,6 +28,9 @@ router
     currencyController.getCurrencies
   );
 
+/**
+ * Update or delete a currency by ID
+ */
 router
   .route('/:currencyId')
   .patch(

@@ -1,4 +1,4 @@
-// File: src/api/categories/categories.routes.js
+// Category and Course routes
 
 const express = require('express');
 const validate = require('../../middlewares/validation.middleware');
@@ -9,19 +9,23 @@ const {
   authorize,
 } = require('../../middlewares/auth.middleware');
 const Roles = require('../../core/enums/Roles');
-/**
- * Category and Course routes
- */
+
 const router = express.Router();
 const courseValidation = require('../courses/courses.validation');
 const courseController = require('../courses/courses.controller');
 
+/**
+ * Get all categories
+ */
 router.get(
   '/',
   validate(categoryValidation.getCategories),
   categoryController.getCategories
 );
 
+/**
+ * Create a new category
+ */
 router.post(
   '/',
   authenticate,
@@ -30,6 +34,9 @@ router.post(
   categoryController.createCategory
 );
 
+/**
+ * Get, update, or delete a category by ID
+ */
 router
   .route('/:categoryId')
   .get(validate(categoryValidation.getCategory), categoryController.getCategory)
@@ -46,12 +53,18 @@ router
     categoryController.deleteCategory
   );
 
+/**
+ * Get category by slug
+ */
 router.get(
   '/slug/:categorySlug',
   validate(categoryValidation.getCategoryBySlug),
   categoryController.getCategoryBySlug
 );
 
+/**
+ * Get courses by category slug
+ */
 router.get(
   '/:categorySlug/courses',
   validate(courseValidation.getCoursesByCategorySlug),

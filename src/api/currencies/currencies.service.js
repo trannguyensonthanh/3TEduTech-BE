@@ -5,6 +5,9 @@ const currencyRepository = require('./currencies.repository');
 const ApiError = require('../../core/errors/ApiError');
 const { toCamelCaseObject } = require('../../utils/caseConverter');
 
+/**
+ * Tạo mới một loại tiền tệ
+ */
 const createCurrency = async (currencyBody) => {
   const { currencyId, currencyName, type, decimalPlaces } = currencyBody;
   const normalizedId = currencyId.toUpperCase();
@@ -31,6 +34,9 @@ const createCurrency = async (currencyBody) => {
   return toCamelCaseObject(newCurrency);
 };
 
+/**
+ * Lấy danh sách các loại tiền tệ với phân trang và tìm kiếm
+ */
 const getCurrencies = async (options) => {
   const { page = 1, limit = 10, searchTerm = '' } = options;
   const result = await currencyRepository.findAllCurrencies({
@@ -48,6 +54,9 @@ const getCurrencies = async (options) => {
   };
 };
 
+/**
+ * Cập nhật thông tin loại tiền tệ
+ */
 const updateCurrency = async (currencyId, updateBody) => {
   const currency = await currencyRepository.findCurrencyById(currencyId);
   if (!currency) {
@@ -85,6 +94,9 @@ const updateCurrency = async (currencyId, updateBody) => {
   return toCamelCaseObject(updatedCurrency || currency);
 };
 
+/**
+ * Xóa một loại tiền tệ
+ */
 const deleteCurrency = async (currencyId) => {
   const currency = await currencyRepository.findCurrencyById(currencyId);
   if (!currency) {

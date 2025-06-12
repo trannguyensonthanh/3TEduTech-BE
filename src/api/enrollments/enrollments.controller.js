@@ -12,7 +12,7 @@ const ApiError = require('../../core/errors/ApiError');
  * Trong thực tế, việc tạo enrollment thường do luồng thanh toán xử lý.
  */
 const enrollInCourse = catchAsync(async (req, res) => {
-  const accountId = req.user.id; // Lấy từ middleware authenticate
+  const accountId = req.user.id;
   const { courseId } = req.params;
 
   const course = await courseRepository.findCourseById(courseId);

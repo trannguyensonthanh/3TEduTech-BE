@@ -28,6 +28,9 @@ const id = Joi.number().integer().required();
 
 const language = Joi.string().max(10).default('vi');
 
+/**
+ * Validate create course payload
+ */
 const createCourse = {
   body: Joi.object().keys({
     courseName: Joi.string().required().max(500),
@@ -37,6 +40,9 @@ const createCourse = {
   }),
 };
 
+/**
+ * Validate get courses query
+ */
 const getCourses = {
   query: Joi.object().keys({
     page: Joi.number().integer().min(1),
@@ -54,12 +60,18 @@ const getCourses = {
   }),
 };
 
+/**
+ * Validate get course by slug params
+ */
 const getCourse = {
   params: Joi.object().keys({
     slug: Joi.string().required(),
   }),
 };
 
+/**
+ * Validate update course payload
+ */
 const updateCourse = {
   params: Joi.object().keys({
     courseId: Joi.number().integer().required(),
@@ -99,12 +111,18 @@ const updateCourse = {
     .messages({ 'object.custom': '{{#message}}' }),
 };
 
+/**
+ * Validate delete course params
+ */
 const deleteCourse = {
   params: Joi.object().keys({
     courseId: Joi.number().integer().required(),
   }),
 };
 
+/**
+ * Validate submit course payload
+ */
 const submitCourse = {
   params: Joi.object().keys({
     courseId: Joi.number().integer().required(),
@@ -114,6 +132,9 @@ const submitCourse = {
   }),
 };
 
+/**
+ * Validate review course payload
+ */
 const reviewCourse = {
   params: Joi.object().keys({
     requestId: Joi.number().integer().required(),
@@ -126,6 +147,9 @@ const reviewCourse = {
   }),
 };
 
+/**
+ * Validate get approval requests query
+ */
 const getApprovalRequests = {
   query: Joi.object().keys({
     page: Joi.number().integer().min(1),
@@ -138,12 +162,18 @@ const getApprovalRequests = {
   }),
 };
 
+/**
+ * Validate get approval request params
+ */
 const getApprovalRequest = {
   params: Joi.object().keys({
     requestId: Joi.number().integer().required(),
   }),
 };
 
+/**
+ * Validate toggle feature payload
+ */
 const toggleFeature = {
   params: Joi.object().keys({
     courseId: Joi.number().integer().required(),
@@ -153,6 +183,9 @@ const toggleFeature = {
   }),
 };
 
+/**
+ * Schema for quiz option payload
+ */
 const quizOptionPayloadSchema = Joi.object({
   tempId: Joi.alternatives().try(Joi.string(), Joi.number()).optional(),
   id: Joi.number().integer().optional().allow(null),
@@ -161,6 +194,9 @@ const quizOptionPayloadSchema = Joi.object({
   optionOrder: Joi.number().integer().min(0).required(),
 });
 
+/**
+ * Schema for quiz question payload
+ */
 const quizQuestionPayloadSchema = Joi.object({
   tempId: Joi.alternatives().try(Joi.string(), Joi.number()).optional(),
   id: Joi.number().integer().optional().allow(null),
@@ -181,12 +217,18 @@ const quizQuestionPayloadSchema = Joi.object({
     .message('Each quiz question must have exactly one correct answer.'),
 });
 
+/**
+ * Schema for attachment payload
+ */
 const attachmentPayloadSchema = Joi.object({
   tempId: Joi.alternatives().try(Joi.string(), Joi.number()).optional(),
   id: Joi.number().integer().optional().allow(null),
   fileName: Joi.string().required().max(255),
 });
 
+/**
+ * Schema for subtitle payload
+ */
 const subtitlePayloadSchema = Joi.object({
   tempId: Joi.alternatives().try(Joi.string(), Joi.number()).optional(),
   id: Joi.number().integer().optional().allow(null),
@@ -196,6 +238,9 @@ const subtitlePayloadSchema = Joi.object({
   isDefault: Joi.boolean().required(),
 });
 
+/**
+ * Schema for lesson payload
+ */
 const lessonPayloadSchema = Joi.object({
   tempId: Joi.alternatives().try(Joi.string(), Joi.number()).optional(),
   id: Joi.number().integer().optional().allow(null),
@@ -255,6 +300,9 @@ const lessonPayloadSchema = Joi.object({
     }),
   });
 
+/**
+ * Schema for section payload
+ */
 const sectionPayloadSchema = Joi.object({
   tempId: Joi.alternatives().try(Joi.string(), Joi.number()).optional(),
   id: Joi.number().integer().optional().allow(null),
@@ -264,6 +312,9 @@ const sectionPayloadSchema = Joi.object({
   lessons: Joi.array().items(lessonPayloadSchema).required(),
 });
 
+/**
+ * Validate get courses by category slug
+ */
 const getCoursesByCategorySlug = {
   params: Joi.object().keys({
     categorySlug: Joi.string().required(),
@@ -280,6 +331,9 @@ const getCoursesByCategorySlug = {
   }),
 };
 
+/**
+ * Validate get courses by instructor
+ */
 const getCoursesByInstructor = {
   params: Joi.object().keys({
     instructorId: Joi.alternatives()

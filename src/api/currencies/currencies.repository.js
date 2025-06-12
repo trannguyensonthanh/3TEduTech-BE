@@ -4,6 +4,11 @@ const ApiError = require('../../core/errors/ApiError');
 const { getConnection, sql } = require('../../database/connection');
 const logger = require('../../utils/logger');
 
+/**
+ * Tạo mới một bản ghi tiền tệ.
+ * @param {Object} currencyData
+ * @returns {Promise<Object>}
+ */
 const createCurrency = async (currencyData) => {
   try {
     const pool = await getConnection();
@@ -31,6 +36,11 @@ const createCurrency = async (currencyData) => {
   }
 };
 
+/**
+ * Tìm tiền tệ theo mã.
+ * @param {string} currencyId
+ * @returns {Promise<Object|null>}
+ */
 const findCurrencyById = async (currencyId) => {
   try {
     const pool = await getConnection();
@@ -46,6 +56,11 @@ const findCurrencyById = async (currencyId) => {
   }
 };
 
+/**
+ * Tìm tiền tệ theo tên.
+ * @param {string} currencyName
+ * @returns {Promise<Object|null>}
+ */
 const findCurrencyByName = async (currencyName) => {
   try {
     const pool = await getConnection();
@@ -61,6 +76,11 @@ const findCurrencyByName = async (currencyName) => {
   }
 };
 
+/**
+ * Lấy danh sách tiền tệ với phân trang và tìm kiếm.
+ * @param {Object} options
+ * @returns {Promise<{currencies: Array, total: number}>}
+ */
 const findAllCurrencies = async (options = {}) => {
   const { page = 1, limit = 10, searchTerm = '' } = options;
   const offset = (page - 1) * limit;
@@ -101,6 +121,12 @@ const findAllCurrencies = async (options = {}) => {
   }
 };
 
+/**
+ * Cập nhật thông tin tiền tệ theo mã.
+ * @param {string} currencyId
+ * @param {Object} updateData
+ * @returns {Promise<Object|null>}
+ */
 const updateCurrencyById = async (currencyId, updateData) => {
   try {
     const pool = await getConnection();
@@ -136,6 +162,11 @@ const updateCurrencyById = async (currencyId, updateData) => {
   }
 };
 
+/**
+ * Kiểm tra tiền tệ có đang được sử dụng không.
+ * @param {string} currencyId
+ * @returns {Promise<boolean>}
+ */
 const isCurrencyInUse = async (currencyId) => {
   try {
     const pool = await getConnection();
@@ -160,6 +191,11 @@ const isCurrencyInUse = async (currencyId) => {
   }
 };
 
+/**
+ * Xóa tiền tệ theo mã.
+ * @param {string} currencyId
+ * @returns {Promise<number>}
+ */
 const deleteCurrencyById = async (currencyId) => {
   try {
     const pool = await getConnection();

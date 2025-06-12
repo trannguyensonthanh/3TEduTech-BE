@@ -1,6 +1,11 @@
 // Đường dẫn: src/api/auth/auth.service.js
 // eslint-disable-next-line no-restricted-syntax
 // eslint-disable-next-line no-await-in-loop
+
+/**
+ * Auth Service
+ */
+
 const axios = require('axios');
 const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
@@ -39,6 +44,10 @@ if (config.googleAuth.clientID) {
 } else {
   logger.warn('Google ClientID not configured, Google login might fail.');
 }
+
+/**
+ * Đăng ký tài khoản người dùng
+ */
 const register = async (userData) => {
   const allowRegistration = await settingsService.getSettingValue(
     'AllowUserRegistration',
@@ -149,6 +158,10 @@ const register = async (userData) => {
     );
   }
 };
+
+/**
+ * Đăng nhập bằng email và mật khẩu
+ */
 const login = async (email, password) => {
   const account = await authRepository.findAccountByEmail(email);
   if (!account) {
@@ -207,6 +220,10 @@ const login = async (email, password) => {
     },
   };
 };
+
+/**
+ * Làm mới access token từ refresh token
+ */
 const refreshAuth = async (providedRefreshToken) => {
   const payload = await verifyToken(providedRefreshToken);
   if (!payload || !payload.accountId) {
@@ -228,6 +245,10 @@ const refreshAuth = async (providedRefreshToken) => {
   });
   return { accessToken: newAccessToken };
 };
+
+/**
+ * Xác thực email người dùng
+ */
 const verifyEmail = async (verificationToken) => {
   const account =
     await authRepository.findAccountByVerificationToken(verificationToken);
@@ -248,6 +269,10 @@ const verifyEmail = async (verificationToken) => {
   });
   logger.info(`Account ${account.AccountID} verified successfully.`);
 };
+
+/**
+ * Gửi email yêu cầu đặt lại mật khẩu
+ */
 const requestPasswordReset = async (email) => {
   const account = await authRepository.findAccountByEmail(email);
   if (!account) {
@@ -292,6 +317,10 @@ const requestPasswordReset = async (email) => {
     `Password reset requested for ${email}. Token generated (for debugging): ${resetToken}`
   );
 };
+
+/**
+ * Đặt lại mật khẩu bằng token
+ */
 const resetPassword = async (resetToken, newPassword) => {
   const account =
     await authRepository.findAccountByPasswordResetToken(resetToken);
@@ -318,6 +347,10 @@ const resetPassword = async (resetToken, newPassword) => {
   });
   logger.info(`Password reset successfully for account ${account.AccountID}`);
 };
+
+/**
+ * Đăng ký tài khoản giảng viên
+ */
 const registerInstructor = async (instructorData) => {
   const allowInstructorRegistration = await settingsService.getSettingValue(
     'AllowInstructorRegistration',
@@ -491,6 +524,10 @@ const registerInstructor = async (instructorData) => {
     );
   }
 };
+
+/**
+ * Tìm hoặc tạo tài khoản người dùng mạng xã hội
+ */
 const findOrCreateSocialUser = async (profileData) => {
   const { provider, externalId, email, fullName, avatarUrl } = profileData;
   if (!email) {
@@ -620,6 +657,10 @@ const findOrCreateSocialUser = async (profileData) => {
     );
   }
 };
+
+/**
+ * Đăng nhập bằng Google
+ */
 const loginWithGoogle = async (idToken) => {
   if (!googleClient) {
     throw new ApiError(
@@ -678,6 +719,10 @@ const loginWithGoogle = async (idToken) => {
     );
   }
 };
+
+/**
+ * Đăng nhập bằng Facebook
+ */
 const loginWithFacebook = async (accessToken) => {
   try {
     const appSecretProof = crypto
@@ -731,6 +776,10 @@ const loginWithFacebook = async (accessToken) => {
     );
   }
 };
+
+/**
+ * Hoàn tất đăng ký Facebook với email người dùng cung cấp
+ */
 const completeFacebookRegistration = async (accessToken, userProvidedEmail) => {
   const email = userProvidedEmail.toLowerCase();
   const existingAccountByEmail = await authRepository.findAccountByEmail(email);
@@ -860,6 +909,10 @@ const completeFacebookRegistration = async (accessToken, userProvidedEmail) => {
     );
   }
 };
+
+/**
+ * Đổi mật khẩu tài khoản
+ */
 const changePassword = async (accountId, currentPassword, newPassword) => {
   const account = await accountRepository.findAccountById(accountId);
   if (!account) {
@@ -894,6 +947,7 @@ const changePassword = async (accountId, currentPassword, newPassword) => {
   }
   logger.info(`Password changed successfully for accountId: ${accountId}`);
 };
+
 module.exports = {
   register,
   login,

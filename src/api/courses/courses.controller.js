@@ -7,11 +7,17 @@ const { pick } = require('../../utils/pick');
 const ApiError = require('../../core/errors/ApiError');
 const { toCamelCaseObject } = require('../../utils/caseConverter');
 
+/**
+ * Tạo mới một khóa học
+ */
 const createCourse = catchAsync(async (req, res) => {
   const course = await courseService.createCourse(req.body, req.user.id);
   res.status(httpStatus.CREATED).send(course);
 });
 
+/**
+ * Cập nhật thông tin khóa học
+ */
 const updateCourse = catchAsync(async (req, res) => {
   const course = await courseService.updateCourse(
     req.params.courseId,
@@ -21,11 +27,17 @@ const updateCourse = catchAsync(async (req, res) => {
   res.status(httpStatus.OK).send(course);
 });
 
+/**
+ * Xóa một khóa học
+ */
 const deleteCourse = catchAsync(async (req, res) => {
   await courseService.deleteCourse(req.params.courseId, req.user);
   res.status(httpStatus.NO_CONTENT).send();
 });
 
+/**
+ * Gửi yêu cầu duyệt khóa học
+ */
 const submitCourseForApproval = catchAsync(async (req, res) => {
   const { notes } = req.body;
   const approvalRequest = await courseService.submitCourseForApproval(
@@ -39,6 +51,9 @@ const submitCourseForApproval = catchAsync(async (req, res) => {
   });
 });
 
+/**
+ * Lấy danh sách yêu cầu duyệt khóa học
+ */
 const getApprovalRequests = catchAsync(async (req, res) => {
   const filters = pick(req.query, [
     'status',
@@ -51,6 +66,9 @@ const getApprovalRequests = catchAsync(async (req, res) => {
   res.status(httpStatus.OK).send(result);
 });
 
+/**
+ * Lấy chi tiết một yêu cầu duyệt khóa học
+ */
 const getApprovalRequestDetails = catchAsync(async (req, res) => {
   const requestDetails = await courseService.getApprovalRequestDetails(
     req.params.requestId
@@ -58,7 +76,9 @@ const getApprovalRequestDetails = catchAsync(async (req, res) => {
   res.status(httpStatus.OK).send(requestDetails);
 });
 
-// --- Admin Actions ---
+/**
+ * Admin: Xử lý yêu cầu duyệt khóa học
+ */
 const reviewCourseApproval = catchAsync(async (req, res) => {
   const { decision, adminNotes } = req.body;
   const updatedRequest = await courseService.reviewCourseApproval(
@@ -73,6 +93,9 @@ const reviewCourseApproval = catchAsync(async (req, res) => {
   });
 });
 
+/**
+ * Admin: Bật/tắt nổi bật cho khóa học
+ */
 const toggleCourseFeature = catchAsync(async (req, res) => {
   const { isFeatured } = req.body;
   const course = await courseService.toggleCourseFeature(
@@ -83,7 +106,9 @@ const toggleCourseFeature = catchAsync(async (req, res) => {
   res.status(httpStatus.OK).send(course);
 });
 
-// --- Public/User Actions ---
+/**
+ * Lấy danh sách khóa học (public/user)
+ */
 const getCourses = catchAsync(async (req, res) => {
   const filters = pick(req.query, [
     'searchTerm',
@@ -97,12 +122,10 @@ const getCourses = catchAsync(async (req, res) => {
   ]);
   const options = pick(req.query, ['limit', 'page', 'sortBy']);
 
-  // Nếu userPage không có giá trị, mặc định là false
   if (filters.userPage === undefined) {
     filters.userPage = false;
   }
 
-  // Truyền req.user để service xử lý quyền xem
   const result = await courseService.getCourses(
     filters,
     options,
@@ -113,8 +136,10 @@ const getCourses = catchAsync(async (req, res) => {
   res.status(httpStatus.OK).send(result);
 });
 
+/**
+ * Lấy thông tin chi tiết một khóa học theo slug
+ */
 const getCourse = catchAsync(async (req, res) => {
-  // Truyền req.user để service xử lý quyền xem
   const course = await courseService.getCourseBySlug(
     req.params.slug,
     req.user,
@@ -123,7 +148,9 @@ const getCourse = catchAsync(async (req, res) => {
   res.status(httpStatus.OK).send(course);
 });
 
-// --- Thêm Controller cho Upload Thumbnail ---
+/**
+ * Cập nhật thumbnail cho khóa học
+ */
 const updateCourseThumbnail = catchAsync(async (req, res) => {
   if (!req.file) {
     throw new ApiError(
@@ -139,6 +166,9 @@ const updateCourseThumbnail = catchAsync(async (req, res) => {
   res.status(httpStatus.OK).send(course);
 });
 
+/**
+ * Cập nhật video giới thiệu cho khóa học
+ */
 const updateCourseIntroVideo = catchAsync(async (req, res) => {
   if (!req.file) {
     throw new ApiError(
@@ -154,11 +184,17 @@ const updateCourseIntroVideo = catchAsync(async (req, res) => {
   res.status(httpStatus.OK).send(course);
 });
 
+/**
+ * Lấy danh sách trạng thái khóa học
+ */
 const getCourseStatuses = catchAsync(async (req, res) => {
   const statuses = await courseService.getCourseStatuses();
   res.status(httpStatus.OK).send(statuses);
 });
 
+/**
+ * Lấy danh sách khóa học theo category slug
+ */
 const getCoursesByCategorySlug = catchAsync(async (req, res) => {
   const { categorySlug } = req.params;
   const filterOptions = pick(req.query, [
@@ -179,6 +215,9 @@ const getCoursesByCategorySlug = catchAsync(async (req, res) => {
   res.status(httpStatus.OK).send(result);
 });
 
+/**
+ * Lấy danh sách khóa học theo instructorId
+ */
 const getCoursesByInstructorId = catchAsync(async (req, res) => {
   const { instructorId } = req.params;
 

@@ -1,8 +1,9 @@
-// đường dẫn đến file auth.validation.js
-
 const Joi = require('joi');
 const Roles = require('../../core/enums/Roles');
 
+/**
+ * Validate register request
+ */
 const register = {
   body: Joi.object().keys({
     email: Joi.string().required().email().lowercase(),
@@ -16,6 +17,9 @@ const register = {
   }),
 };
 
+/**
+ * Validate login request
+ */
 const login = {
   body: Joi.object().keys({
     email: Joi.string().required().email().lowercase(),
@@ -23,20 +27,32 @@ const login = {
   }),
 };
 
+/**
+ * Validate refresh tokens request
+ */
 const refreshTokens = {};
 
+/**
+ * Validate verify email request
+ */
 const verifyEmail = {
   query: Joi.object().keys({
     token: Joi.string().required(),
   }),
 };
 
+/**
+ * Validate request password reset
+ */
 const requestPasswordReset = {
   body: Joi.object().keys({
     email: Joi.string().required().email().lowercase(),
   }),
 };
 
+/**
+ * Validate reset password request
+ */
 const resetPassword = {
   query: Joi.object().keys({
     token: Joi.string().required(),
@@ -59,6 +75,9 @@ const socialLinkSchema = Joi.object({
   url: Joi.string().uri().required().max(500),
 });
 
+/**
+ * Validate register instructor request
+ */
 const registerInstructor = {
   body: Joi.object().keys({
     email: Joi.string().required().email().lowercase(),
@@ -73,18 +92,27 @@ const registerInstructor = {
   }),
 };
 
+/**
+ * Validate Google login request
+ */
 const googleLogin = {
   body: Joi.object().keys({
     idToken: Joi.string().required(),
   }),
 };
 
+/**
+ * Validate Facebook login request
+ */
 const facebookLogin = {
   body: Joi.object().keys({
     accessToken: Joi.string().required(),
   }),
 };
 
+/**
+ * Validate complete Facebook registration request
+ */
 const completeFacebookRegistration = {
   body: Joi.object().keys({
     accessToken: Joi.string().required(),
@@ -92,6 +120,9 @@ const completeFacebookRegistration = {
   }),
 };
 
+/**
+ * Validate change password request
+ */
 const changePassword = {
   body: Joi.object().keys({
     currentPassword: Joi.string().required().messages({

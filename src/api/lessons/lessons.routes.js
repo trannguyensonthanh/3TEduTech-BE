@@ -13,14 +13,13 @@ const {
   uploadAttachment,
   handleMulterError,
 } = require('../../middlewares/upload.middleware');
-const subtitleRoutes = require('./subtitle.routes'); // *** Import subtitle routes ***
+const subtitleRoutes = require('./subtitle.routes');
 const { lessonDiscussionRouter } = require('../discussions/discussions.routes');
-const quizController = require('../quizzes/quizzes.controller'); // *** THÊM IMPORT ***
-const quizValidation = require('../quizzes/quizzes.validation'); // *** THÊM IMPORT ***
-// Router cho các thao tác trên lesson cụ thể, không lồng vào section
+const quizController = require('../quizzes/quizzes.controller');
+const quizValidation = require('../quizzes/quizzes.validation');
+
 const router = express.Router();
 
-// Các thao tác cần biết lessonId
 router
   .route('/:lessonId')
   .get(
@@ -33,9 +32,7 @@ router
     // Cập nhật lesson (Instructor/Admin)
     authenticate,
     authorize([Roles.INSTRUCTOR, Roles.ADMIN, Roles.SUPERADMIN]),
-
     validate(lessonValidation.updateLesson),
-
     lessonController.updateLesson
   )
   .delete(
@@ -45,30 +42,24 @@ router
     validate(lessonValidation.deleteLesson),
     lessonController.deleteLesson
   );
-// *** Mount subtitle routes ***
+
 router.use('/:lessonId/subtitles', subtitleRoutes);
-// --- Thêm Routes quản lý câu hỏi Quiz cho lesson ---
-// Chỉ Instructor/Admin mới được truy cập
-const quizManagementRouter = express.Router({ mergeParams: true }); // mergeParams để lấy lessonId
+
+const quizManagementRouter = express.Router({ mergeParams: true });
 quizManagementRouter.use(
   authenticate,
   authorize([Roles.INSTRUCTOR, Roles.ADMIN, Roles.SUPERADMIN])
 );
 
 quizManagementRouter.post(
-  '/questions', // Tạo câu hỏi mới ( kế cả các options )
-  validate(quizValidation.createQuestion), // Validation dùng lessonId từ params
+  '/questions',
+  validate(quizValidation.createQuestion),
   quizController.createQuestion
 );
-quizManagementRouter.get(
-  '/questions', // Lấy danh sách câu hỏi
-  // No validation needed for params here, lessonId is from parent
-  quizController.getQuestions
-);
-// Gắn router quản lý quiz vào lesson
+quizManagementRouter.get('/questions', quizController.getQuestions);
+
 router.use('/:lessonId/quiz', quizManagementRouter);
 
-// Router cho thao tác trên questionId cụ thể
 const questionRouter = express.Router();
 questionRouter.use(
   authenticate,
@@ -87,11 +78,10 @@ questionRouter
     validate(quizValidation.deleteQuestion),
     quizController.deleteQuestion
   );
-// *** Mount discussion routes vào lesson ***
+
 router.use('/:lessonId/discussions', lessonDiscussionRouter);
 
-// Router cho thao tác trên questionId cụ thể (questionRouter)
-const questionMgmtRouter = express.Router({ mergeParams: true }); // Tạo router mới ở đây
+const questionMgmtRouter = express.Router({ mergeParams: true });
 questionMgmtRouter.use(
   authenticate,
   authorize([Roles.INSTRUCTOR, Roles.ADMIN, Roles.SUPERADMIN])
@@ -107,16 +97,14 @@ questionMgmtRouter
     // Lấy danh sách câu hỏi
     quizController.getQuestions
   );
-router.use('/:lessonId/quiz/questions', questionMgmtRouter); // Mount vào đây
-// Router cho các thao tác liên quan đến section (tạo lesson, sắp xếp)
-// Router này sẽ được mount vào route của section
-const sectionScopedRouter = express.Router({ mergeParams: true }); // mergeParams để lấy sectionId
+router.use('/:lessonId/quiz/questions', questionMgmtRouter);
+
+const sectionScopedRouter = express.Router({ mergeParams: true });
 
 sectionScopedRouter.post(
   '/', // Tạo lesson mới trong section
   authenticate,
   authorize([Roles.INSTRUCTOR, Roles.ADMIN, Roles.SUPERADMIN]),
-
   validate(lessonValidation.createLesson),
   lessonController.createLesson
 );
@@ -136,44 +124,40 @@ sectionScopedRouter.patch(
   lessonController.updateLessonsOrder
 );
 
-// --- Thêm Route Upload Video ---
 router.patch(
   '/:lessonId/video',
   authenticate,
   authorize([Roles.INSTRUCTOR, Roles.ADMIN, Roles.SUPERADMIN]),
-  uploadVideo.single('video'), // Middleware nhận file từ field 'video'
+  uploadVideo.single('video'),
   handleMulterError,
-  lessonController.updateLessonVideo // Controller mới sẽ tạo
+  lessonController.updateLessonVideo
 );
 
-// --- Routes cho Attachments ---
 router.post(
-  '/:lessonId/attachments', // Tạo attachment mới
+  '/:lessonId/attachments',
   authenticate,
   authorize([Roles.INSTRUCTOR, Roles.ADMIN, Roles.SUPERADMIN]),
-  uploadAttachment.single('attachment'), // Middleware nhận file từ field 'attachment'
+  uploadAttachment.single('attachment'),
   handleMulterError,
-  lessonController.addLessonAttachment // Controller mới sẽ tạo
+  lessonController.addLessonAttachment
 );
 
 router.delete(
-  '/:lessonId/attachments/:attachmentId', // Xóa attachment
+  '/:lessonId/attachments/:attachmentId',
   authenticate,
   authorize([Roles.INSTRUCTOR, Roles.ADMIN, Roles.SUPERADMIN]),
-  // Không cần multer ở đây
-  lessonController.deleteLessonAttachment // Controller mới sẽ tạo
+  lessonController.deleteLessonAttachment
 );
 
-// *** THÊM ROUTE LẤY SIGNED URL ***
 router.get(
   '/:lessonId/video-url',
-  authenticate, // Phải đăng nhập để lấy URL private
-  validate(lessonValidation.getLesson), // Dùng validation của getLesson (chỉ cần lessonId)
-  lessonController.getLessonVideoUrl // Controller mới
+  authenticate,
+  validate(lessonValidation.getLesson),
+  lessonController.getLessonVideoUrl
 );
 
 module.exports = {
-  lessonRouter: router, // Router cho thao tác trên lessonId
-  sectionScopedLessonRouter: sectionScopedRouter, // Router cho thao tác trong context của sectionId
+  lessonRouter: router,
+  sectionScopedLessonRouter: sectionScopedRouter,
   questionRouter,
 };

@@ -1,15 +1,16 @@
 const httpStatus = require('http-status').status;
 const sectionRepository = require('./sections.repository');
-const courseRepository = require('../courses/courses.repository'); // Để kiểm tra khóa học và quyền
+const courseRepository = require('../courses/courses.repository');
 const ApiError = require('../../core/errors/ApiError');
 const CourseStatus = require('../../core/enums/CourseStatus');
 const Roles = require('../../core/enums/Roles');
 const logger = require('../../utils/logger');
-const { getConnection, sql } = require('../../database/connection'); // Cần cho transaction
+const { getConnection, sql } = require('../../database/connection');
 const lessonRepository = require('../lessons/lessons.repository');
 const lessonAttachmentRepository = require('../lessons/lessonAttachment.repository');
-const cloudinaryUtil = require('../../utils/cloudinary.util'); // Để xóa video/attachments trên Cloudinary
+const cloudinaryUtil = require('../../utils/cloudinary.util');
 const { toCamelCaseObject } = require('../../utils/caseConverter');
+
 /**
  * Kiểm tra quyền truy cập và trạng thái khóa học cho việc sửa đổi section/lesson.
  * @param {number} courseId - ID khóa học.
@@ -18,7 +19,7 @@ const { toCamelCaseObject } = require('../../utils/caseConverter');
  * @returns {Promise<object>} - Thông tin khóa học nếu hợp lệ.
  */
 const checkCourseAccess = async (courseId, user, action) => {
-  const course = await courseRepository.findCourseById(courseId, true); // Lấy cả draft
+  const course = await courseRepository.findCourseById(courseId, true);
   if (!course) {
     throw new ApiError(httpStatus.NOT_FOUND, 'Không tìm thấy khóa học.');
   }
@@ -33,7 +34,6 @@ const checkCourseAccess = async (courseId, user, action) => {
     );
   }
 
-  // Chỉ cho phép sửa đổi nội dung khi khóa học là DRAFT hoặc REJECTED (Admin có thể có quyền khác)
   if (
     !isAdmin &&
     ![CourseStatus.DRAFT, CourseStatus.REJECTED].includes(course.StatusID)
@@ -62,7 +62,7 @@ const createSection = async (courseId, sectionData, user) => {
   const newSectionData = {
     CourseID: courseId,
     SectionName: sectionData.sectionName,
-    SectionOrder: sectionData.sectionOrder || newOrder, // Nếu không có order thì tự động tăng dần
+    SectionOrder: sectionData.sectionOrder || newOrder,
     Description: sectionData.description,
   };
 
@@ -78,7 +78,6 @@ const createSection = async (courseId, sectionData, user) => {
  * @returns {Promise<object[]>}
  */
 const getSectionsByCourse = async (courseId) => {
-  // Giả sử courseId đã được validate tồn tại và quyền truy cập bởi hàm gọi
   return sectionRepository.findSectionsByCourseId(courseId);
 };
 
@@ -94,21 +93,18 @@ const updateSection = async (sectionId, updateBody, user) => {
   if (!section) {
     throw new ApiError(httpStatus.NOT_FOUND, 'Không tìm thấy chương.');
   }
-  // Kiểm tra quyền dựa trên khóa học chứa section này
   await checkCourseAccess(section.CourseID, user, 'cập nhật chương');
 
-  // Không cho phép cập nhật SectionOrder qua API này, dùng API reorder riêng
   const dataToUpdate = {
     SectionName: updateBody.sectionName,
     Description: updateBody.description,
   };
-  // Lọc bỏ các trường undefined
   Object.keys(dataToUpdate).forEach(
     (key) => dataToUpdate[key] === undefined && delete dataToUpdate[key]
   );
 
   if (Object.keys(dataToUpdate).length === 0) {
-    return section; // Không có gì thay đổi
+    return section;
   }
 
   const updatedSection = await sectionRepository.updateSectionById(
@@ -117,7 +113,7 @@ const updateSection = async (sectionId, updateBody, user) => {
   );
   if (!updatedSection) {
     logger.warn(`Update section ${sectionId} returned null.`);
-    return section; // Trả về section gốc nếu repo trả về null
+    return section;
   }
   return updatedSection;
 };
@@ -138,7 +134,6 @@ const deleteSection = async (sectionId, user) => {
   const lessons = await lessonRepository.findLessonsBySectionId(sectionId);
 
   for (const lesson of lessons) {
-    // Xóa video
     if (lesson.ExternalVideoID) {
       try {
         await cloudinaryUtil.deleteAsset(lesson.ExternalVideoID, {
@@ -155,7 +150,6 @@ const deleteSection = async (sectionId, user) => {
       }
     }
 
-    // Xóa attachments
     const attachments =
       await lessonAttachmentRepository.findAttachmentsByLessonId(
         lesson.LessonID
@@ -180,7 +174,6 @@ const deleteSection = async (sectionId, user) => {
     }
   }
 
-  // Thực hiện xóa section khỏi DB (sẽ xóa lessons, attachments theo CASCADE)
   await sectionRepository.deleteSectionById(sectionId);
   logger.info(
     `Section ${sectionId} and associated DB records deleted by user ${user.id}`
@@ -197,21 +190,18 @@ const deleteSection = async (sectionId, user) => {
 const updateSectionsOrder = async (courseId, sectionOrders, user) => {
   await checkCourseAccess(courseId, user, 'sắp xếp chương');
 
-  // Validate input: Đảm bảo tất cả sectionId trong mảng thuộc courseId và không trùng lặp order
   const currentSections =
     await sectionRepository.findSectionsByCourseId(courseId);
   const currentSectionIds = currentSections.map((s) => s.SectionID);
   const requestSectionIds = sectionOrders.map((s) => s.id);
   const requestOrders = sectionOrders.map((s) => s.order);
 
-  // Check if all requested section IDs belong to the course
   if (!requestSectionIds.every((id) => currentSectionIds.includes(id))) {
     throw new ApiError(
       httpStatus.BAD_REQUEST,
       'Danh sách chương không hợp lệ cho khóa học này.'
     );
   }
-  // Check if all sections of the course are included in the request
   if (
     requestSectionIds.length !== currentSectionIds.length ||
     !currentSectionIds.every((id) => requestSectionIds.includes(id))
@@ -222,14 +212,12 @@ const updateSectionsOrder = async (courseId, sectionOrders, user) => {
     );
   }
 
-  // Check for duplicate orders
   if (new Set(requestOrders).size !== requestOrders.length) {
     throw new ApiError(
       httpStatus.BAD_REQUEST,
       'Thứ tự chương không được trùng lặp.'
     );
   }
-  // Check if orders are sequential starting from 0 (optional but good practice)
   const sortedOrders = [...requestOrders].sort((a, b) => a - b);
   if (
     sortedOrders[0] !== 0 ||
@@ -241,7 +229,6 @@ const updateSectionsOrder = async (courseId, sectionOrders, user) => {
     );
   }
 
-  // Sử dụng transaction để đảm bảo tính toàn vẹn
   const pool = await getConnection();
   const transaction = new sql.Transaction(pool);
   try {
@@ -270,5 +257,5 @@ module.exports = {
   updateSection,
   deleteSection,
   updateSectionsOrder,
-  checkCourseAccess, // Export để Lesson service sử dụng lại
+  checkCourseAccess,
 };

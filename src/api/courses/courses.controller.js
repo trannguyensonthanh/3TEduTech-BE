@@ -6,9 +6,8 @@ const { catchAsync } = require('../../utils/catchAsync');
 const { pick } = require('../../utils/pick');
 const ApiError = require('../../core/errors/ApiError');
 const { toCamelCaseObject } = require('../../utils/caseConverter');
-// --- Instructor/Admin Actions ---
+
 const createCourse = catchAsync(async (req, res) => {
-  // req.user.id được gắn bởi middleware authenticate
   const course = await courseService.createCourse(req.body, req.user.id);
   res.status(httpStatus.CREATED).send(course);
 });
@@ -62,7 +61,6 @@ const getApprovalRequestDetails = catchAsync(async (req, res) => {
 // --- Admin Actions ---
 const reviewCourseApproval = catchAsync(async (req, res) => {
   const { decision, adminNotes } = req.body;
-  // Cần lấy requestId từ params thay vì courseId
   const updatedRequest = await courseService.reviewCourseApproval(
     req.params.requestId,
     decision,
@@ -74,12 +72,6 @@ const reviewCourseApproval = catchAsync(async (req, res) => {
     request: toCamelCaseObject(updatedRequest),
   });
 });
-
-// const getPendingCourses = catchAsync(async (req, res) => {
-//   const options = pick(req.query, ['limit', 'page', 'sortBy']);
-//   const result = await courseService.getPendingCourses(options);
-//   res.status(httpStatus.OK).send(result);
-// });
 
 const toggleCourseFeature = catchAsync(async (req, res) => {
   const { isFeatured } = req.body;
@@ -162,25 +154,6 @@ const updateCourseIntroVideo = catchAsync(async (req, res) => {
   res.status(httpStatus.OK).send(course);
 });
 
-// --- Controller mới cho Sync Curriculum ---
-const syncCurriculum = catchAsync(async (req, res) => {
-  const { courseId } = req.params;
-  const { sections } = req.body; // Payload từ frontend
-
-  // Gọi service để thực hiện đồng bộ
-  const result = await courseService.syncCurriculum(
-    parseInt(courseId, 10),
-    sections,
-    req.user // Truyền user để kiểm tra quyền
-  );
-
-  // Trả về curriculum đã cập nhật hoặc chỉ thông báo thành công
-  res.status(httpStatus.OK).send({
-    message: 'Curriculum synchronized successfully.',
-    // updatedCurriculum: result.updatedCurriculum, // Tùy chọn trả về data mới
-  });
-});
-
 const getCourseStatuses = catchAsync(async (req, res) => {
   const statuses = await courseService.getCourseStatuses();
   res.status(httpStatus.OK).send(statuses);
@@ -200,30 +173,24 @@ const getCoursesByCategorySlug = catchAsync(async (req, res) => {
   const result = await courseService.queryCoursesByCategorySlug(
     categorySlug,
     filterOptions,
-    paginationOptions
+    paginationOptions,
+    req.targetCurrency
   );
   res.status(httpStatus.OK).send(result);
 });
 
 const getCoursesByInstructorId = catchAsync(async (req, res) => {
   const { instructorId } = req.params;
-  // Mặc định chỉ lấy các khóa học đã PUBLISHED của giảng viên này khi người khác xem
-  // Nếu là chính giảng viên đó xem (hoặc admin), có thể cho phép xem các trạng thái khác
-  // Điều này có thể xử lý ở service dựa trên req.user (nếu có) và instructorId
+
   const filterOptions = pick(req.query, ['searchTerm', 'statusId']);
   const paginationOptions = pick(req.query, ['page', 'limit', 'sortBy']);
-
-  // Nếu không có statusId trong query, và người gọi không phải là instructor đó hoặc admin,
-  // thì mặc định chỉ lấy PUBLISHED. Logic này nên ở service.
-  // Ví dụ: if (!filterOptions.statusId && (!req.user || req.user.accountId !== parseInt(instructorId))) {
-  //   filterOptions.statusId = CourseStatus.PUBLISHED;
-  // }
 
   const result = await courseService.queryCoursesByInstructor(
     instructorId,
     filterOptions,
     paginationOptions,
-    req.user // Truyền user để service có thể quyết định quyền xem các trạng thái
+    req.user,
+    req.targetCurrency
   );
   res.status(httpStatus.OK).send(result);
 });
@@ -235,16 +202,14 @@ module.exports = {
   submitCourseForApproval,
   getApprovalRequests,
   getApprovalRequestDetails,
-  // getPendingCourses,
-  // Admin
+
   reviewCourseApproval,
   toggleCourseFeature,
-  // Public/User
+
   getCourses,
-  getCourse, // Lấy theo slug
+  getCourse,
   updateCourseThumbnail,
   updateCourseIntroVideo,
-  syncCurriculum, // Đồng bộ curriculum
   getCourseStatuses,
   getCoursesByCategorySlug,
   getCoursesByInstructorId,

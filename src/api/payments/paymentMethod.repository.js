@@ -1,17 +1,15 @@
-// src/api/payments/paymentMethod.repository.js
-const httpStatus = require('http-status');
+const httpStatus = require('http-status').status;
 
 const ApiError = require('../../core/errors/ApiError');
 const { getConnection, sql } = require('../../database/connection');
 const logger = require('../../utils/logger');
 
-// Cache đơn giản cho payment methods vì chúng ít thay đổi
 const methodsCache = {
   all: null,
   byId: new Map(),
   expires: 0,
 };
-const CACHE_TTL = 15 * 60 * 1000; // Cache 15 phút
+const CACHE_TTL = 15 * 60 * 1000;
 
 /**
  * Tải tất cả các payment methods vào cache nếu cache hết hạn hoặc chưa có.
@@ -20,7 +18,7 @@ const CACHE_TTL = 15 * 60 * 1000; // Cache 15 phút
 const loadAllMethodsToCache = async (forceRefresh = false) => {
   const now = Date.now();
   if (!forceRefresh && methodsCache.all && methodsCache.expires > now) {
-    return; // Cache còn hạn
+    return;
   }
 
   logger.debug('Refreshing PaymentMethods cache...');
@@ -30,10 +28,9 @@ const loadAllMethodsToCache = async (forceRefresh = false) => {
       .request()
       .query(
         'SELECT MethodID, MethodName FROM PaymentMethods ORDER BY MethodName;'
-      ); // Lấy các cột cần thiết
+      );
     const allMethods = result.recordset;
 
-    // Cập nhật cache
     methodsCache.all = allMethods;
     methodsCache.byId.clear();
     allMethods.forEach((method) => {
@@ -45,8 +42,6 @@ const loadAllMethodsToCache = async (forceRefresh = false) => {
     );
   } catch (error) {
     logger.error('Error loading PaymentMethods into cache:', error);
-    // Không xóa cache cũ nếu lỗi, để tránh mất dữ liệu khi DB tạm thời lỗi
-    // throw error; // Không nên throw lỗi ở hàm cache
   }
 };
 
@@ -56,9 +51,8 @@ const loadAllMethodsToCache = async (forceRefresh = false) => {
  * @returns {Promise<object|null>} - Object PaymentMethod hoặc null nếu không tìm thấy.
  */
 const findMethodById = async (methodId) => {
-  await loadAllMethodsToCache(); // Đảm bảo cache được tải (nếu cần)
+  await loadAllMethodsToCache();
   const cachedMethod = methodsCache.byId.get(methodId);
-  // Trả về bản sao để tránh sửa đổi cache gốc (nếu cần)
   return cachedMethod ? { ...cachedMethod } : null;
 };
 
@@ -67,8 +61,7 @@ const findMethodById = async (methodId) => {
  * @returns {Promise<Array<object>>} - Mảng các PaymentMethod.
  */
 const findAllMethods = async () => {
-  await loadAllMethodsToCache(); // Đảm bảo cache được tải
-  // Trả về bản sao của mảng
+  await loadAllMethodsToCache();
   return methodsCache.all ? [...methodsCache.all] : [];
 };
 
@@ -83,18 +76,18 @@ const createMethod = async (methodData) => {
     const request = pool.request();
     request.input('MethodID', sql.VarChar, methodData.MethodID);
     request.input('MethodName', sql.NVarChar, methodData.MethodName);
-
+    request.input('IconUrl', sql.VarChar, methodData.IconUrl);
+    request.input('Description', sql.NVarChar, methodData.Description);
     const result = await request.query(`
-            INSERT INTO PaymentMethods (MethodID, MethodName)
+            INSERT INTO PaymentMethods (MethodID, MethodName, IconUrl, Description)
             OUTPUT Inserted.*
-            VALUES (@MethodID, @MethodName);
+            VALUES (@MethodID, @MethodName, @IconUrl, @Description);
         `);
-    await loadAllMethodsToCache(true); // Force refresh cache sau khi tạo mới
+    await loadAllMethodsToCache(true);
     return result.recordset[0];
   } catch (error) {
     logger.error('Error creating payment method:', error);
     if (error.number === 2627 || error.number === 2601) {
-      // Unique MethodID
       throw new ApiError(
         httpStatus.BAD_REQUEST,
         'Mã phương thức thanh toán đã tồn tại.'
@@ -121,7 +114,14 @@ const updateMethodById = async (methodId, updateData) => {
       request.input('MethodName', sql.NVarChar, updateData.MethodName);
       setClauses.push('MethodName = @MethodName');
     }
-    // Thêm các trường khác nếu bảng PaymentMethods có thêm cột
+    if (updateData.IconUrl !== undefined) {
+      request.input('IconUrl', sql.VarChar, updateData.IconUrl);
+      setClauses.push('IconUrl = @IconUrl');
+    }
+    if (updateData.Description !== undefined) {
+      request.input('Description', sql.NVarChar, updateData.Description);
+      setClauses.push('Description = @Description');
+    }
 
     if (setClauses.length === 0) return null;
 
@@ -130,7 +130,7 @@ const updateMethodById = async (methodId, updateData) => {
             OUTPUT Inserted.*
             WHERE MethodID = @MethodID;
         `);
-    await loadAllMethodsToCache(true); // Force refresh cache
+    await loadAllMethodsToCache(true);
     return result.recordset[0];
   } catch (error) {
     logger.error(`Error updating payment method ${methodId}:`, error);
@@ -148,19 +148,16 @@ const deleteMethodById = async (methodId) => {
     const pool = await getConnection();
     const request = pool.request();
     request.input('MethodID', sql.VarChar, methodId);
-    // Cần kiểm tra xem có InstructorPayoutMethods hoặc CoursePayments nào đang dùng không?
-    // Hoặc dựa vào FK constraint (nếu là RESTRICT hoặc NO ACTION)
     const result = await request.query(
       'DELETE FROM PaymentMethods WHERE MethodID = @MethodID'
     );
     if (result.rowsAffected[0] > 0) {
-      await loadAllMethodsToCache(true); // Force refresh cache
+      await loadAllMethodsToCache(true);
     }
     return result.rowsAffected[0];
   } catch (error) {
     logger.error(`Error deleting payment method ${methodId}:`, error);
     if (error.number === 547) {
-      // FK Constraint
       throw new ApiError(
         httpStatus.BAD_REQUEST,
         'Không thể xóa phương thức thanh toán vì đang được sử dụng.'
@@ -173,7 +170,6 @@ const deleteMethodById = async (methodId) => {
 module.exports = {
   findMethodById,
   findAllMethods,
-  // Admin functions (nếu cần API riêng cho chúng)
   createMethod,
   updateMethodById,
   deleteMethodById,

@@ -3,12 +3,13 @@
 const httpStatus = require('http-status').status;
 const { default: Decimal } = require('decimal.js');
 const cartRepository = require('./carts.repository');
-const courseRepository = require('../courses/courses.repository'); // Lấy thông tin khóa học
-const enrollmentService = require('../enrollments/enrollments.service'); // Kiểm tra đã enroll chưa
+const courseRepository = require('../courses/courses.repository');
+const enrollmentService = require('../enrollments/enrollments.service');
 const ApiError = require('../../core/errors/ApiError');
 const CourseStatus = require('../../core/enums/CourseStatus');
 const pricingUtil = require('../../utils/pricing.util');
 const logger = require('../../utils/logger');
+
 /**
  * Lấy hoặc tạo giỏ hàng cho user.
  * @param {number} accountId
@@ -26,23 +27,19 @@ const getUserCart = async (accountId) => {
  */
 const addCourseToCart = async (accountId, courseId) => {
   const cart = await getUserCart(accountId);
-
-  // 1. Kiểm tra khóa học tồn tại, đã publish và user chưa đăng ký
-  const course = await courseRepository.findCourseById(courseId); // Chỉ lấy published
+  const course = await courseRepository.findCourseById(courseId);
   if (!course || course.StatusID !== CourseStatus.PUBLISHED) {
     throw new ApiError(
       httpStatus.NOT_FOUND,
       'Khóa học không tồn tại hoặc chưa được xuất bản.'
     );
   }
-  // Kiểm tra nếu user là instructor của khóa học này -> không cho mua
   if (course.InstructorID === accountId) {
     throw new ApiError(
       httpStatus.BAD_REQUEST,
       'Bạn không thể thêm khóa học của chính mình vào giỏ hàng.'
     );
   }
-
   const isEnrolled = await enrollmentService.isUserEnrolled(
     accountId,
     courseId
@@ -53,8 +50,6 @@ const addCourseToCart = async (accountId, courseId) => {
       'Bạn đã đăng ký khóa học này rồi.'
     );
   }
-
-  // 2. Kiểm tra item đã có trong giỏ chưa (repository sẽ báo lỗi unique, nhưng check trước vẫn tốt)
   const existingItem = await cartRepository.findCartItemByCourse(
     cart.CartID,
     courseId
@@ -65,11 +60,7 @@ const addCourseToCart = async (accountId, courseId) => {
       'Khóa học này đã có trong giỏ hàng.'
     );
   }
-
-  // 3. Lấy giá hiện tại để lưu vào CartItem
   const currentPrice = course.DiscountedPrice ?? course.OriginalPrice;
-
-  // 4. Thêm item
   const itemData = {
     CartID: cart.CartID,
     CourseID: courseId,
@@ -112,25 +103,20 @@ const viewCart = async (accountId, targetCurrency) => {
   let finalPrice = new Decimal(0);
   const itemsWithPricing = await Promise.all(
     itemsFromRepo.map(async (item) => {
-      // Giá gốc (base) của item sẽ được tính theo giá gốc của khóa học
       const itemAsCourse = {
         OriginalPrice: item.OriginalPrice,
         DiscountedPrice: item.DiscountedPrice,
       };
-
       const pricing = await pricingUtil.createPricingObject(
         itemAsCourse,
         targetCurrency
       );
-
-      // Cộng dồn tổng tiền dựa trên giá hiển thị (display price)
       totalOriginalPrice = totalOriginalPrice.plus(
         pricing.display.originalPrice
       );
       finalPrice = finalPrice.plus(
         pricing.display.discountedPrice ?? pricing.display.originalPrice
       );
-
       return {
         cartItemId: item.CartItemID,
         courseId: item.CourseID,
@@ -139,7 +125,7 @@ const viewCart = async (accountId, targetCurrency) => {
         thumbnailUrl: item.ThumbnailUrl,
         instructorName: item.InstructorName,
         addedAt: item.AddedAt,
-        pricing, // <<< Dùng cấu trúc pricing mới
+        pricing,
       };
     })
   );
@@ -169,21 +155,15 @@ const viewCart = async (accountId, targetCurrency) => {
  * @returns {Promise<void>}
  */
 const clearMyCart = async (accountId) => {
-  // Lấy giỏ hàng của user (nếu chưa có thì sẽ được tạo, nhưng sẽ không có item nào để xóa)
   const cart = await getUserCart(accountId);
-
-  // Gọi repository để xóa tất cả các item liên quan đến cartId
   const deletedCount = await cartRepository.clearCart(cart.CartID);
-
   logger.info(
     `Cleared ${deletedCount} items from cart ${cart.CartID} for user ${accountId}.`
   );
-
-  // Service không cần trả về gì, controller sẽ gọi viewCart để lấy lại giỏ hàng rỗng.
 };
 
 module.exports = {
-  getUserCart, // Có thể không cần export ra controller
+  getUserCart,
   addCourseToCart,
   removeCourseFromCart,
   viewCart,

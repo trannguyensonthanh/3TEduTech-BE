@@ -1,28 +1,20 @@
 // File: src/api/courses/courses.repository.js
-
 const httpStatus = require('http-status').status;
 const ApiError = require('../../core/errors/ApiError');
 const { getConnection, sql } = require('../../database/connection');
 const logger = require('../../utils/logger');
-const CourseStatus = require('../../core/enums/CourseStatus'); // Sẽ tạo enum này
-const sectionRepository = require('../sections/sections.repository'); // Để lấy curriculum
-const { toCamelCaseObject } = require('../../utils/caseConverter');
+const CourseStatus = require('../../core/enums/CourseStatus');
+const sectionRepository = require('../sections/sections.repository');
+
 /**
  * Tạo khóa học mới (thường là bản nháp).
- * @param {object} courseData - Dữ liệu khóa học.
- * @param {object} [transaction=null] - Transaction nếu có.
- * @returns {Promise<object>} - Khóa học vừa tạo.
  */
 const createCourse = async (courseData, transaction = null) => {
-  // Mặc định StatusID là DRAFT nếu không được cung cấp
   const statusId = courseData.StatusID || CourseStatus.DRAFT;
-
-  // Sử dụng pool hoặc transaction
   const executor = transaction
     ? transaction.request()
     : (await getConnection()).request();
 
-  // Định nghĩa input parameters
   executor.input('CourseName', sql.NVarChar, courseData.CourseName);
   executor.input('Slug', sql.NVarChar, courseData.Slug);
   executor.input('ShortDescription', sql.NVarChar, courseData.ShortDescription);
@@ -43,7 +35,6 @@ const createCourse = async (courseData, transaction = null) => {
   executor.input('Language', sql.VarChar, courseData.Language || 'vi');
   executor.input('StatusID', sql.VarChar, statusId);
   executor.input('IsFeatured', sql.Bit, courseData.IsFeatured || 0);
-  // PublishedAt và LiveCourseID thường là NULL khi tạo mới
 
   try {
     const result = await executor.query(`
@@ -68,9 +59,6 @@ const createCourse = async (courseData, transaction = null) => {
 
 /**
  * Tìm khóa học bằng ID.
- * @param {number} courseId
- * @param {boolean} includeDraft - Có bao gồm bản nháp không (mặc định là không)
- * @returns {Promise<object|null>}
  */
 const findCourseById = async (courseId, includeDraft = false) => {
   try {
@@ -90,10 +78,8 @@ const findCourseById = async (courseId, includeDraft = false) => {
             WHERE c.CourseID = @CourseID
         `;
 
-    // Nếu không bao gồm bản nháp, chỉ lấy các trạng thái công khai
     if (!includeDraft) {
       request.input('PublishedStatus', sql.VarChar, CourseStatus.PUBLISHED);
-      // Có thể thêm các status khác được coi là public nếu cần (vd: ARCHIVED?)
       query += ' AND c.StatusID = @PublishedStatus';
     }
 
@@ -107,9 +93,6 @@ const findCourseById = async (courseId, includeDraft = false) => {
 
 /**
  * Tìm khóa học bằng Slug.
- * @param {string} slug
- * @param {boolean} includeDraft - Có bao gồm bản nháp không (mặc định là không)
- * @returns {Promise<object|null>}
  */
 const findCourseBySlug = async (slug, includeDraft = false) => {
   try {
@@ -144,8 +127,6 @@ const findCourseBySlug = async (slug, includeDraft = false) => {
 
 /**
  * Tìm khóa học chỉ bằng Slug (kiểm tra tồn tại slug).
- * @param {string} slug
- * @returns {Promise<object|null>} - Chỉ trả về CourseID và Slug nếu tìm thấy.
  */
 const findCourseIdBySlug = async (slug) => {
   try {
@@ -164,9 +145,6 @@ const findCourseIdBySlug = async (slug) => {
 
 /**
  * Lấy danh sách khóa học với bộ lọc và phân trang.
- * @param {object} filters - { categoryId, levelId, instructorId, statusId, isFeatured, searchTerm }
- * @param {object} options - { page, limit, sortBy (vd: 'CreatedAt:desc', 'Price:asc') }
- * @returns {Promise<{ courses: object[], total: number }>}
  */
 const findAllCourses = async (filters = {}, options = {}) => {
   const {
@@ -177,10 +155,9 @@ const findAllCourses = async (filters = {}, options = {}) => {
     isFeatured,
     searchTerm,
     language,
-  } = filters; // Mặc định chỉ lấy published
+  } = filters;
   const { page = 1, limit = 10, sortBy = 'CreatedAt:desc' } = options;
   const offset = (page - 1) * limit;
-  console.log('searchTerm', searchTerm);
   try {
     const pool = await getConnection();
     const request = pool.request();
@@ -212,13 +189,13 @@ const findAllCourses = async (filters = {}, options = {}) => {
         up.AccountID AS InstructorAccountID,
         up.FullName AS InstructorName,
         up.AvatarUrl AS InstructorAvatar,
-        COUNT(e.EnrollmentID) AS StudentCount -- Đếm số lượng học sinh đã đăng ký
+        COUNT(e.EnrollmentID) AS StudentCount
       FROM Courses c
       JOIN Categories cat ON c.CategoryID = cat.CategoryID
       JOIN Levels lvl ON c.LevelID = lvl.LevelID
       JOIN CourseStatuses cs ON c.StatusID = cs.StatusID
       JOIN UserProfiles up ON c.InstructorID = up.AccountID
-      LEFT JOIN Enrollments e ON c.CourseID = e.CourseID -- Join với bảng Enrollments để đếm số học sinh
+      LEFT JOIN Enrollments e ON c.CourseID = e.CourseID
     `;
 
     let countQuery = `
@@ -232,7 +209,6 @@ const findAllCourses = async (filters = {}, options = {}) => {
 
     const whereClauses = [];
 
-    // Áp dụng bộ lọc
     if (statusId && statusId.toUpperCase() !== 'ALL') {
       request.input('StatusID', sql.VarChar, statusId);
       whereClauses.push('c.StatusID = @StatusID');
@@ -278,18 +254,17 @@ const findAllCourses = async (filters = {}, options = {}) => {
         cat.CategoryName, lvl.LevelName, cs.StatusName, up.AccountID, up.FullName, up.AvatarUrl
     `;
 
-    // Sắp xếp
-    let orderByClause = 'ORDER BY c.CreatedAt DESC'; // Mặc định
+    let orderByClause = 'ORDER BY c.CreatedAt DESC';
     if (sortBy) {
       const [sortField, sortOrder] = sortBy.split(':');
       const allowedSortFields = {
         CreatedAt: 'c.CreatedAt',
         PublishedAt: 'c.PublishedAt',
-        Price: 'ISNULL(c.DiscountedPrice, c.OriginalPrice)', // Sắp xếp theo giá thực tế
+        Price: 'ISNULL(c.DiscountedPrice, c.OriginalPrice)',
         Name: 'c.CourseName',
       };
       const orderDirection =
-        sortOrder?.toLowerCase() === 'asc' ? 'ASC' : 'DESC'; // Mặc định DESC
+        sortOrder?.toLowerCase() === 'asc' ? 'ASC' : 'DESC';
 
       if (allowedSortFields[sortField]) {
         orderByClause = `ORDER BY ${allowedSortFields[sortField]} ${orderDirection}`;
@@ -297,18 +272,15 @@ const findAllCourses = async (filters = {}, options = {}) => {
     }
     query += ` ${orderByClause}`;
 
-    // Phân trang
     if (limit > 0) {
       request.input('Limit', sql.Int, limit);
       request.input('Offset', sql.Int, offset);
       query += ' OFFSET @Offset ROWS FETCH NEXT @Limit ROWS ONLY';
     }
 
-    // Query lấy tổng số lượng
     const countResult = await request.query(countQuery);
     const { total } = countResult.recordset[0];
 
-    // Query lấy dữ liệu
     const dataResult = await request.query(query);
     const courses = dataResult.recordset;
     return { courses, total };
@@ -320,27 +292,21 @@ const findAllCourses = async (filters = {}, options = {}) => {
 
 /**
  * Cập nhật khóa học bằng ID.
- * @param {number} courseId
- * @param {object} updateData - Dữ liệu cập nhật.
- * @param {object} [transaction=null] - Transaction nếu có.
- * @returns {Promise<object>} - Khóa học đã cập nhật.
  */
 const updateCourseById = async (courseId, updateData, transaction = null) => {
   const executor = transaction
     ? transaction.request()
     : (await getConnection()).request();
   executor.input('CourseID', sql.BigInt, courseId);
-  executor.input('UpdatedAt', sql.DateTime2, new Date()); // Luôn cập nhật
+  executor.input('UpdatedAt', sql.DateTime2, new Date());
 
   const setClauses = ['UpdatedAt = @UpdatedAt'];
 
   const keys = Object.keys(updateData);
   keys.forEach((key) => {
     if (key !== 'CourseID' && key !== 'InstructorID' && key !== 'CreatedAt') {
-      // Không cho cập nhật PK, InstructorID, CreatedAt
       const value = updateData[key];
       let sqlType;
-      // Xác định kiểu dữ liệu (cần mở rộng cho đầy đủ)
       if (
         [
           'CourseName',
@@ -361,16 +327,15 @@ const updateCourseById = async (courseId, updateData, transaction = null) => {
       else if (['CategoryID', 'LevelID'].includes(key)) sqlType = sql.Int;
       else if (['PublishedAt'].includes(key)) sqlType = sql.DateTime2;
       else if (['IsFeatured'].includes(key)) sqlType = sql.Bit;
-      else if (['LiveCourseID'].includes(key))
-        sqlType = sql.BigInt; // Cần nếu dùng luồng draft/live
-      else return; // Bỏ qua key không xác định
+      else if (['LiveCourseID'].includes(key)) sqlType = sql.BigInt;
+      else return;
 
       executor.input(key, sqlType, value);
       setClauses.push(`${key} = @${key}`);
     }
   });
 
-  if (setClauses.length === 1) return null; // Không có gì để cập nhật
+  if (setClauses.length === 1) return null;
 
   const query = `
         UPDATE Courses
@@ -381,7 +346,7 @@ const updateCourseById = async (courseId, updateData, transaction = null) => {
 
   try {
     const result = await executor.query(query);
-    return result.recordset[0]; // Trả về bản ghi đã cập nhật
+    return result.recordset[0];
   } catch (error) {
     logger.error(`Error updating course ${courseId}:`, error);
     throw error;
@@ -390,16 +355,12 @@ const updateCourseById = async (courseId, updateData, transaction = null) => {
 
 /**
  * Xóa khóa học bằng ID (Cân nhắc xóa mềm).
- * @param {number} courseId
- * @returns {Promise<number>} - Số dòng bị ảnh hưởng.
  */
 const deleteCourseById = async (courseId) => {
   try {
     const pool = await getConnection();
     const request = pool.request();
     request.input('CourseID', sql.BigInt, courseId);
-    // TODO: Xem xét xóa mềm bằng cách cập nhật StatusID thành 'DELETED' hoặc thêm cột IsDeleted
-    // Hiện tại đang là xóa cứng
     const result = await request.query(
       'DELETE FROM Courses WHERE CourseID = @CourseID'
     );
@@ -407,7 +368,6 @@ const deleteCourseById = async (courseId) => {
   } catch (error) {
     logger.error(`Error deleting course ${courseId}:`, error);
     if (error.number === 547) {
-      // Lỗi FK (ví dụ: có Enrollment, Section,...)
       throw new ApiError(
         httpStatus.BAD_REQUEST,
         'Không thể xóa khóa học vì có dữ liệu liên quan (học viên đăng ký, bài học,...). Cân nhắc lưu trữ khóa học thay vì xóa.'
@@ -417,7 +377,9 @@ const deleteCourseById = async (courseId) => {
   }
 };
 
-// --- Các hàm liên quan đến Course Approval ---
+/**
+ * Tạo yêu cầu phê duyệt khóa học.
+ */
 const createCourseApprovalRequest = async ({
   courseId,
   instructorId,
@@ -431,7 +393,6 @@ const createCourseApprovalRequest = async ({
     request.input('InstructorID', sql.BigInt, instructorId);
     request.input('RequestType', sql.VarChar, requestType);
     request.input('InstructorNotes', sql.NVarChar, instructorNotes);
-    // Status mặc định là PENDING
 
     const result = await request.query(`
             INSERT INTO CourseApprovalRequests (CourseID, InstructorID, RequestType, InstructorNotes)
@@ -445,19 +406,22 @@ const createCourseApprovalRequest = async ({
   }
 };
 
+/**
+ * Tìm yêu cầu phê duyệt đang chờ xử lý theo CourseID.
+ */
 const findPendingApprovalRequestByCourseId = async (courseId) => {
   try {
     const pool = await getConnection();
     const request = pool.request();
     request.input('CourseID', sql.BigInt, courseId);
-    request.input('PendingStatus', sql.VarChar, 'PENDING'); // Hoặc các trạng thái chờ khác
+    request.input('PendingStatus', sql.VarChar, 'PENDING');
     const result = await request.query(`
             SELECT *
             FROM CourseApprovalRequests
             WHERE CourseID = @CourseID AND Status = @PendingStatus
             ORDER BY CreatedAt DESC
         `);
-    return result.recordset[0] || null; // Lấy request mới nhất
+    return result.recordset[0] || null;
   } catch (error) {
     logger.error(
       `Error finding pending approval for course ${courseId}:`,
@@ -467,15 +431,14 @@ const findPendingApprovalRequestByCourseId = async (courseId) => {
   }
 };
 
+/**
+ * Cập nhật trạng thái yêu cầu phê duyệt.
+ */
 const updateApprovalRequestStatus = async (
   requestId,
   { status, adminId, adminNotes }
 ) => {
   try {
-    console.log('updateApprovalRequestStatus', requestId);
-    console.log('status', status);
-    console.log('adminId', adminId);
-    console.log('adminNotes', adminNotes);
     const pool = await getConnection();
     const request = pool.request();
     request.input('RequestID', sql.BigInt, requestId);
@@ -503,14 +466,11 @@ const updateApprovalRequestStatus = async (
 };
 
 /**
- * Admin: Lấy danh sách các yêu cầu phê duyệt khóa học.
- * @param {object} filters - { status, instructorId, courseId, searchTerm }
- * @param {object} options - { page, limit, sortBy }
- * @returns {Promise<{requests: object[], total: number}>}
+ * Lấy danh sách các yêu cầu phê duyệt khóa học.
  */
 const findCourseApprovalRequests = async (filters = {}, options = {}) => {
   const { status, instructorId, courseId, searchTerm } = filters;
-  const { page = 1, limit = 10, sortBy = 'CreatedAt:desc' } = options; // Sắp xếp theo yêu cầu mới nhất trước
+  const { page = 1, limit = 10, sortBy = 'CreatedAt:desc' } = options;
   const offset = (page - 1) * limit;
 
   try {
@@ -541,7 +501,6 @@ const findCourseApprovalRequests = async (filters = {}, options = {}) => {
         )
       `);
     }
-    // Mặc định lấy cả PENDING, APPROVED, REJECTED,... trừ khi có filter status
 
     const whereCondition =
       whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
@@ -550,27 +509,24 @@ const findCourseApprovalRequests = async (filters = {}, options = {}) => {
           FROM CourseApprovalRequests car
           JOIN Courses c ON car.CourseID = c.CourseID
           JOIN UserProfiles instructor_up ON car.InstructorID = instructor_up.AccountID
-          LEFT JOIN UserProfiles admin_up ON car.AdminID = admin_up.AccountID -- Admin đã duyệt (nếu có)
+          LEFT JOIN UserProfiles admin_up ON car.AdminID = admin_up.AccountID
       `;
     const commonQuery = `${commonJoins} ${whereCondition}`;
 
-    // Đếm tổng số lượng
     const countResult = await request.query(
       `SELECT COUNT(car.RequestID) as total ${commonQuery}`
     );
     const { total } = countResult.recordset[0];
 
-    // Sắp xếp
-    let orderByClause = 'ORDER BY car.CreatedAt DESC'; // Mặc định mới nhất
+    let orderByClause = 'ORDER BY car.CreatedAt DESC';
     if (sortBy === 'CreatedAt:asc') {
       orderByClause = 'ORDER BY car.CreatedAt ASC';
     } else if (sortBy === 'ReviewedAt:desc') {
       orderByClause = 'ORDER BY car.ReviewedAt DESC, car.CreatedAt DESC';
     } else if (sortBy === 'ReviewedAt:asc') {
       orderByClause = 'ORDER BY car.ReviewedAt ASC, car.CreatedAt ASC';
-    } // Thêm các tùy chọn sort khác
+    }
 
-    // Lấy dữ liệu phân trang
     request.input('Limit', sql.Int, limit);
     request.input('Offset', sql.Int, offset);
     const dataResult = await request.query(`
@@ -593,9 +549,7 @@ const findCourseApprovalRequests = async (filters = {}, options = {}) => {
 };
 
 /**
- * Admin: Tìm một yêu cầu phê duyệt cụ thể bằng ID.
- * @param {number} requestId
- * @returns {Promise<object|null>}
+ * Tìm một yêu cầu phê duyệt cụ thể bằng ID.
  */
 const findCourseApprovalRequestById = async (requestId) => {
   try {
@@ -611,8 +565,8 @@ const findCourseApprovalRequestById = async (requestId) => {
       `;
     const result = await request.query(`
          SELECT
-          car.*, -- Lấy tất cả các cột từ request
-          c.CourseName, c.Slug as CourseSlug, c.StatusID as CourseCurrentStatus, -- Lấy thêm trạng thái hiện tại của khóa học
+          car.*,
+          c.CourseName, c.Slug as CourseSlug, c.StatusID as CourseCurrentStatus,
           instructor_up.FullName as InstructorName,
           admin_up.FullName as AdminName
         ${commonJoins}
@@ -630,9 +584,6 @@ const findCourseApprovalRequestById = async (requestId) => {
 
 /**
  * Tìm khóa học bằng Slug, bao gồm TOÀN BỘ chi tiết curriculum lồng nhau.
- * @param {string} slug - Slug của khóa học.
- * @param {boolean} includeNonPublished - True để lấy cả bản nháp/pending/rejected (cho instructor/admin).
- * @returns {Promise<object|null>} - Course object với sections -> lessons -> details...
  */
 const findCourseWithFullDetailsBySlug = async (
   slug,
@@ -646,7 +597,6 @@ const findCourseWithFullDetailsBySlug = async (
   request.input('Slug', sql.NVarChar, slug);
 
   try {
-    // 1. Lấy thông tin Course cơ bản và Instructor/Category/Level/Status
     let courseQuery = `
           SELECT c.*, cat.CategoryName, lvl.LevelName, cs.StatusName,
                  acc.Email as InstructorEmail, up.FullName as InstructorName, up.AvatarUrl as InstructorAvatar
@@ -659,7 +609,6 @@ const findCourseWithFullDetailsBySlug = async (
           WHERE c.Slug = @Slug
       `;
 
-    // Filter trạng thái nếu không phải lấy bản nháp
     if (!includeNonPublished) {
       request.input('PublishedStatus', sql.VarChar, CourseStatus.PUBLISHED);
       courseQuery += ' AND c.StatusID = @PublishedStatus';
@@ -673,12 +622,9 @@ const findCourseWithFullDetailsBySlug = async (
       return null;
     }
 
-    // 2. Lấy toàn bộ Curriculum (sections và các con của nó)
-    // Sử dụng lại hàm đã tạo cho sync (hoặc tạo hàm tương tự chỉ lấy theo courseId)
     course.sections = await sectionRepository.findAllSectionsWithDetails(
       course.CourseID
-    ); // Bỏ transaction vì đây là query độc lập
-    // 3. Tính tổng thời gian (duration) của khóa học
+    );
     const durationQuery = `
       SELECT SUM(ISNULL(l.VideoDurationSeconds, 0)) AS TotalDuration
       FROM Lessons l
@@ -689,7 +635,6 @@ const findCourseWithFullDetailsBySlug = async (
     const durationResult = await request.query(durationQuery);
     course.totalDuration = durationResult.recordset[0]?.TotalDuration || 0;
 
-    // 4. Đếm tổng số lượng bài học (lessons) trong khóa học
     const lessonCountQuery = `
       SELECT COUNT(*) AS TotalLessons
       FROM Lessons l
@@ -698,7 +643,7 @@ const findCourseWithFullDetailsBySlug = async (
     `;
     const lessonCountResult = await request.query(lessonCountQuery);
     course.totalLessons = lessonCountResult.recordset[0]?.TotalLessons || 0;
-    // 5. Đếm số lượng học sinh đã đăng ký khóa học
+
     const studentCountQuery = `
       SELECT COUNT(*) AS StudentCount
       FROM Enrollments
@@ -719,10 +664,6 @@ const findCourseWithFullDetailsBySlug = async (
 
 /**
  * Tìm khóa học bằng ID, bao gồm TOÀN BỘ chi tiết curriculum lồng nhau.
- * (Hàm này cũng hữu ích, có thể dùng thay cho findCourseWithFullDetailsBySlug nếu thích dùng ID)
- * @param {number} courseId
- * @param {boolean} includeNonPublished
- * @returns {Promise<object|null>}
  */
 const findCourseWithFullDetailsById = async (
   courseId,
@@ -736,7 +677,6 @@ const findCourseWithFullDetailsById = async (
   request.input('CourseID', sql.BigInt, courseId);
 
   try {
-    // 1. Lấy thông tin Course cơ bản
     let courseQuery = `
            SELECT c.*, cat.CategoryName, lvl.LevelName, cs.StatusName,
                   acc.Email as InstructorEmail, up.FullName as InstructorName, up.AvatarUrl as InstructorAvatar
@@ -756,7 +696,6 @@ const findCourseWithFullDetailsById = async (
     const course = courseResult.recordset[0];
     if (!course) return null;
 
-    // 2. Lấy Curriculum
     course.sections = await sectionRepository.findAllSectionsWithDetails(
       course.CourseID
     );
@@ -774,6 +713,9 @@ const findCourseWithFullDetailsById = async (
   }
 };
 
+/**
+ * Lấy tất cả trạng thái khóa học.
+ */
 const getAllCourseStatuses = async () => {
   try {
     const pool = await getConnection();
@@ -785,69 +727,12 @@ const getAllCourseStatuses = async () => {
       ORDER BY StatusName ASC
     `);
 
-    return result.recordset; // Trả về danh sách status
+    return result.recordset;
   } catch (error) {
     logger.error('Error fetching course statuses:', error);
     throw error;
   }
 };
-
-// /**
-//  * Admin: Lấy danh sách khóa học đang chờ duyệt (PENDING).
-//  * @param {object} options - { page, limit, sortBy }
-//  * @returns {Promise<{courses: object[], total: number}>}
-//  */
-// const findPendingCoursesForAdmin = async (options = {}) => {
-//   const { page = 1, limit = 10, sortBy = 'CreatedAt:asc' } = options; // Sắp xếp theo cũ nhất trước?
-//   const offset = (page - 1) * limit;
-
-//   try {
-//     const pool = await getConnection();
-//     const request = pool.request();
-//     request.input('PendingStatus', sql.VarChar, CourseStatus.PENDING);
-
-//     const whereCondition = 'WHERE c.StatusID = @PendingStatus';
-
-//     const commonQuery = `
-//           FROM Courses c
-//           JOIN UserProfiles up ON c.InstructorID = up.AccountID -- Lấy tên instructor
-//           ${whereCondition}
-//       `;
-
-//     // Đếm tổng số lượng
-//     const countResult = await request.query(
-//       `SELECT COUNT(c.CourseID) as total ${commonQuery}`
-//     );
-//     const { total } = countResult.recordset[0];
-
-//     // Sắp xếp
-//     let orderByClause = 'ORDER BY c.CreatedAt ASC'; // Ưu tiên duyệt cái cũ trước
-//     if (sortBy === 'CreatedAt:desc') {
-//       orderByClause = 'ORDER BY c.CreatedAt DESC';
-//     } else if (sortBy === 'InstructorName:asc') {
-//       orderByClause = 'ORDER BY up.FullName ASC, c.CreatedAt ASC';
-//     } // Thêm các tùy chọn sort khác nếu cần
-
-//     // Lấy dữ liệu phân trang
-//     request.input('Limit', sql.Int, limit);
-//     request.input('Offset', sql.Int, offset);
-//     const dataResult = await request.query(`
-//           SELECT
-//               c.CourseID, c.CourseName, c.Slug, c.UpdatedAt as LastUpdated, c.CreatedAt as SubmittedAt, -- Có thể lấy CreatedAt của Approval Request thay thế?
-//               c.InstructorID, up.FullName as InstructorName, up.AvatarUrl as InstructorAvatar
-//               -- Lấy thêm RequestID của yêu cầu duyệt tương ứng nếu cần
-//            -- (SELECT TOP 1 RequestID FROM CourseApprovalRequests car WHERE car.CourseID = c.CourseID AND car.Status = @PendingStatus ORDER BY car.CreatedAt DESC) as ApprovalRequestID
-//           ${commonQuery}
-//           ${orderByClause}
-//           OFFSET @Offset ROWS FETCH NEXT @Limit ROWS ONLY;
-//       `);
-
-//     return { courses: dataResult.recordset, total };
-//   } catch (error) {
-//     logger.error('Error finding pending courses for admin:', error);
-//     throw error;
-//   }
-// };
 
 module.exports = {
   createCourse,
@@ -857,15 +742,12 @@ module.exports = {
   findAllCourses,
   updateCourseById,
   deleteCourseById,
-  // Approval related
   createCourseApprovalRequest,
   findPendingApprovalRequestByCourseId,
   updateApprovalRequestStatus,
-  findCourseApprovalRequests, // *** Thêm export ***
+  findCourseApprovalRequests,
   findCourseApprovalRequestById,
-  // Full details
   findCourseWithFullDetailsBySlug,
   findCourseWithFullDetailsById,
   getAllCourseStatuses,
-  // findPendingCoursesForAdmin,
 };

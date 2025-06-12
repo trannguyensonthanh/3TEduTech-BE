@@ -2,12 +2,13 @@
 
 const httpStatus = require('http-status').status;
 const enrollmentRepository = require('./enrollments.repository');
-const courseRepository = require('../courses/courses.repository'); // Để kiểm tra khóa học
+const courseRepository = require('../courses/courses.repository');
 const ApiError = require('../../core/errors/ApiError');
 const CourseStatus = require('../../core/enums/CourseStatus');
 const logger = require('../../utils/logger');
 const notificationService = require('../notifications/notifications.service');
 const { toCamelCaseObject } = require('../../utils/caseConverter');
+
 /**
  * Tạo đăng ký mới cho người dùng vào khóa học (ví dụ: sau khi thanh toán thành công).
  * @param {number} accountId - ID người dùng đăng ký.
@@ -22,17 +23,14 @@ const createEnrollment = async (
   purchasePrice,
   transaction = null
 ) => {
-  // 1. Kiểm tra khóa học tồn tại và đã publish chưa
-  const course = await courseRepository.findCourseById(courseId); // Chỉ tìm published course
+  const course = await courseRepository.findCourseById(courseId);
   if (!course || course.StatusID !== CourseStatus.PUBLISHED) {
-    // Hoặc nếu cho phép đăng ký khóa học không publish (vd: khóa học nội bộ) thì bỏ check status
     throw new ApiError(
       httpStatus.NOT_FOUND,
       'Khóa học không tồn tại hoặc chưa được xuất bản.'
     );
   }
 
-  // 2. Kiểm tra xem đã đăng ký chưa
   const existingEnrollment =
     await enrollmentRepository.findEnrollmentByUserAndCourse(
       accountId,
@@ -45,7 +43,6 @@ const createEnrollment = async (
     );
   }
 
-  // 3. Tạo enrollment
   const enrollmentData = {
     AccountID: accountId,
     CourseID: courseId,
@@ -58,7 +55,6 @@ const createEnrollment = async (
   );
 
   if (!newEnrollment) {
-    // Trường hợp này xảy ra nếu repo bắt lỗi unique và trả về null (race condition)
     logger.warn(
       `Duplicate enrollment detected during creation for user ${accountId}, course ${courseId}`
     );
@@ -70,14 +66,13 @@ const createEnrollment = async (
 
   logger.info(`User ${accountId} enrolled in course ${courseId} successfully.`);
   try {
-    // Lấy lại tên khóa học
     const course = await courseRepository.findCourseById(courseId);
     const message = `Chúc mừng bạn đã đăng ký thành công khóa học "${
       course?.CourseName || ''
     }"!`;
     await notificationService.createNotification(
       accountId,
-      'COURSE_ENROLLED', // Loại mới
+      'COURSE_ENROLLED',
       message,
       { type: 'Course', id: courseId }
     );
@@ -101,7 +96,7 @@ const isUserEnrolled = async (accountId, courseId) => {
     accountId,
     courseId
   );
-  return !!enrollment; // Chuyển thành boolean
+  return !!enrollment;
 };
 
 /**
@@ -125,24 +120,17 @@ const getMyEnrollments = async (accountId, options) => {
         )
       : 0;
 
-    // completionDate: chỉ trả về nếu đã hoàn thành 100%
     let completionDate = null;
     if (progressPercentage === 100 && enrollment.LastCompletedLessonAt) {
       completionDate = enrollment.LastCompletedLessonAt;
     }
 
     return {
-      ...toCamelCaseObject(enrollment), // Chuyển đổi sang camelCase
+      ...toCamelCaseObject(enrollment),
       progressPercentage,
       completionDate,
     };
   });
-
-  // TODO: Tính toán % tiến độ cho mỗi khóa học và thêm vào kết quả
-  // for (const enrollment of result.enrollments) {
-  //     const progress = await progressService.getCourseProgress(accountId, enrollment.CourseID);
-  //     enrollment.progressPercentage = progress.percentage;
-  // }
 
   return {
     enrollments: enriched,

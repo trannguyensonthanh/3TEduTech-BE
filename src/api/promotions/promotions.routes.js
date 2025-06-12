@@ -14,14 +14,12 @@ const router = express.Router();
 router
   .route('/')
   .post(
-    // Tạo mới
     authenticate,
     authorize([Roles.ADMIN, Roles.SUPERADMIN]),
     validate(promotionValidation.createPromotion),
     promotionController.createPromotion
   )
   .get(
-    // Lấy danh sách (Admin)
     authenticate,
     authorize([Roles.ADMIN, Roles.SUPERADMIN]),
     validate(promotionValidation.getPromotions),
@@ -31,22 +29,27 @@ router
 router
   .route('/:promotionId')
   .get(
-    // Lấy chi tiết (Admin)
     authenticate,
     authorize([Roles.ADMIN, Roles.SUPERADMIN]),
     validate(promotionValidation.getPromotion),
     promotionController.getPromotion
   )
   .patch(
-    // Cập nhật (Admin)
     authenticate,
     authorize([Roles.ADMIN, Roles.SUPERADMIN]),
     validate(promotionValidation.updatePromotion),
     promotionController.updatePromotion
+  )
+  .delete(
+    authenticate,
+    authorize([Roles.ADMIN, Roles.SUPERADMIN]),
+    validate(promotionValidation.deletePromotion),
+    promotionController.deletePromotion
   );
 
+// Hủy kích hoạt (Admin)
 router.patch(
-  '/:promotionId/deactivate', // Hủy kích hoạt (Admin)
+  '/:promotionId/deactivate',
   authenticate,
   authorize([Roles.ADMIN, Roles.SUPERADMIN]),
   validate(promotionValidation.deactivatePromotion),
@@ -57,8 +60,7 @@ router.patch(
 // Ví dụ: Route để user kiểm tra mã giảm giá trước khi đặt hàng
 router.post(
   '/validate-code',
-  authenticate, // Yêu cầu đăng nhập để biết giỏ hàng của ai
-  // validate(promotionValidation.validateCode), // Cần schema validation nếu có
+  authenticate,
   promotionController.validatePromotionCode
 );
 

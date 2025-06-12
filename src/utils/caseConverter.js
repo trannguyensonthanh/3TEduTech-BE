@@ -1,4 +1,3 @@
-// src/utils/caseConverter.js
 const _ = require('lodash');
 
 /**
@@ -37,7 +36,6 @@ function convertObjectKeys(
       if (Object.prototype.hasOwnProperty.call(data, key)) {
         let newKey = keyTransformer(key);
 
-        // Xử lý đặc biệt cho 'Id' -> 'ID' khi chuyển sang PascalCase
         if (
           isToPascalWithSpecialID &&
           newKey.endsWith('Id') &&
@@ -46,18 +44,11 @@ function convertObjectKeys(
           newKey = `${newKey.slice(0, -2)}ID`;
         }
 
-        // Xử lý đặc biệt cho 'ID' -> 'Id' khi chuyển sang CamelCase
         if (isToCamelWithSpecialID && newKey.endsWith('ID') && key.length > 2) {
-          // Đảm bảo không phải chỉ là 'ID'
-          // _.camelCase('UserID') sẽ ra 'userId', nên logic này có thể không cần nếu _.camelCase đã xử lý đúng
-          // Tuy nhiên, nếu key gốc là 'UserID' và keyTransformer là identity, thì cần:
           if (key.endsWith('ID')) {
             newKey = `${key.slice(0, -2)}Id`;
           }
         }
-        // Nếu keyTransformer là _.camelCase, nó đã tự xử lý 'UserID' -> 'userId' rồi.
-        // Logic isToCamelWithSpecialID ở trên chủ yếu hữu ích nếu keyTransformer không phải là _.camelCase
-        // hoặc nếu bạn muốn đảm bảo 'ANYTHINGID' -> 'anythingId' thay vì 'anythingiD' (do lodash camelCase)
 
         newObj[newKey] = convertObjectKeys(
           data[key],
@@ -80,18 +71,14 @@ function convertObjectKeys(
  */
 const toCamelCaseObject = (data) => {
   const customCamelCaseTransformer = (key) => {
-    // Nếu key kết thúc bằng 'ID' và chữ cái ngay trước 'ID' là viết hoa (ví dụ: UserID, SectionDetailID)
-    // và key không phải chỉ là 'ID'
     if (
       key.endsWith('ID') &&
       key.length > 2 &&
       key[key.length - 3] === key[key.length - 3].toUpperCase()
     ) {
-      // Chuyển phần đầu về camelCase, sau đó nối với 'Id'
       const prefix = key.slice(0, -2);
       return `${_.camelCase(prefix)}Id`;
     }
-    // Các trường hợp khác, dùng _.camelCase bình thường
     return _.camelCase(key);
   };
   return convertObjectKeys(data, customCamelCaseTransformer);
@@ -105,8 +92,7 @@ const toCamelCaseObject = (data) => {
  */
 const toPascalCaseObject = (data) => {
   const customPascalCaseTransformer = (key) => {
-    let pascalKey = _.upperFirst(_.camelCase(key)); // Chuẩn hóa về Pascal cơ bản
-    // Nếu key gốc kết thúc bằng 'Id' (sau khi đã camelCase hóa) thì chuyển 'Id' thành 'ID'
+    let pascalKey = _.upperFirst(_.camelCase(key));
     if (
       key.toLowerCase().endsWith('id') &&
       pascalKey.endsWith('Id') &&
@@ -132,5 +118,4 @@ module.exports = {
   toCamelCaseObject,
   toPascalCaseObject,
   toSnakeCaseObject,
-  // convertObjectKeys, // Có thể không cần export hàm gốc nữa
 };

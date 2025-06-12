@@ -1,5 +1,7 @@
 // File: categories.validation.js
-
+/**
+ * Validation for creating a category
+ */
 const Joi = require('joi');
 
 const createCategory = {
@@ -22,27 +24,38 @@ const createCategory = {
   }),
 };
 
+/**
+ * Validation for getting categories (list)
+ */
 const getCategories = {
   query: Joi.object().keys({
     page: Joi.number().integer().min(1),
-    limit: Joi.number().integer().min(0), // 0 để lấy tất cả
+    limit: Joi.number().integer().min(0),
     searchTerm: Joi.string().allow(null, ''),
   }),
 };
 
+/**
+ * Validation for getting a category by ID
+ */
 const getCategory = {
   params: Joi.object().keys({
     categoryId: Joi.number().integer().required(),
   }),
 };
 
-// --- Validation mới cho /slug/:categorySlug ---
+/**
+ * Validation for getting a category by slug
+ */
 const getCategoryBySlug = {
   params: Joi.object().keys({
     categorySlug: Joi.string().required(),
   }),
 };
 
+/**
+ * Validation for updating a category
+ */
 const updateCategory = {
   params: Joi.object().keys({
     categoryId: Joi.number().integer().required(),
@@ -64,9 +77,12 @@ const updateCategory = {
         .max(500)
         .allow(null, ''),
     })
-    .min(1), // Phải có ít nhất 1 trường để cập nhật
+    .min(1),
 };
 
+/**
+ * Validation for deleting a category
+ */
 const deleteCategory = {
   params: Joi.object().keys({
     categoryId: Joi.number().integer().required(),

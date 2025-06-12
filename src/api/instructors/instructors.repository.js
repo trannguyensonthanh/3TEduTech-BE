@@ -4,7 +4,6 @@ const ApiError = require('../../core/errors/ApiError');
 const { getConnection, sql } = require('../../database/connection');
 const { toCamelCaseObject } = require('../../utils/caseConverter');
 const logger = require('../../utils/logger');
-
 /**
  * Tìm hoặc tạo InstructorProfile.
  * @param {number} accountId
@@ -13,7 +12,6 @@ const logger = require('../../utils/logger');
  * @returns {Promise<object>}
  */
 const findOrCreateInstructorProfile = async (accountId, transaction = null) => {
-  console.log('Account ID:', transaction); // Log accountId để kiểm tra
   const executor = transaction
     ? transaction.request()
     : (await getConnection()).request();
@@ -25,12 +23,10 @@ const findOrCreateInstructorProfile = async (accountId, transaction = null) => {
     if (result.recordset[0]) {
       return result.recordset[0];
     }
-    // Tạo mới nếu chưa có
     const createExecutor = transaction
       ? transaction.request()
       : (await getConnection()).request();
     createExecutor.input('AccountID', sql.BigInt, accountId);
-    // Thêm các trường default nếu cần
     result = await createExecutor.query(`
                  INSERT INTO InstructorProfiles (AccountID) OUTPUT Inserted.* VALUES (@AccountID);
              `);
@@ -56,8 +52,6 @@ const updateInstructorProfile = async (
   updateData,
   transaction = null
 ) => {
-  console.log('Update Data:', updateData); // Log dữ liệu để kiểm tra
-  // Đảm bảo bản ghi tồn tại trước khi cập nhật
   await findOrCreateInstructorProfile(accountId, transaction);
 
   const executor = transaction
@@ -76,13 +70,12 @@ const updateInstructorProfile = async (
         ['ProfessionalTitle', 'BankName', 'BankAccountHolderName'].includes(key)
       )
         sqlType = sql.NVarChar;
-      else if (['Bio', 'AboutMe'].includes(key))
-        sqlType = sql.NVarChar; // MAX implicitly handled
+      else if (['Bio', 'AboutMe'].includes(key)) sqlType = sql.NVarChar;
       else if (['BankAccountNumber'].includes(key)) sqlType = sql.VarChar;
       else if (['LastBalanceUpdate'].includes(key)) sqlType = sql.DateTime2;
-      else return; // Skip unrecognized keys
+      else return;
 
-      executor.input(key, sqlType, value); // Use executor.input
+      executor.input(key, sqlType, value);
       setClauses.push(`${key} = @${key}`);
     }
   });
@@ -103,11 +96,8 @@ const updateInstructorProfile = async (
   }
 };
 
-// --- Instructor Skills ---
 const addInstructorSkill = async (accountId, skillId, transaction = null) => {
   try {
-    console.log('Adding skill:', skillId); // Log skillId để kiểm tra
-    // *** Sử dụng executor từ transaction hoặc pool ***
     const executor = transaction
       ? transaction.request()
       : (await getConnection()).request();
@@ -141,7 +131,7 @@ const removeInstructorSkill = async (accountId, skillId) => {
     const result = await request.query(`
             DELETE FROM InstructorSkills WHERE AccountID = @AccountID AND SkillID = @SkillID;
         `);
-    return result.rowsAffected[0]; // Số dòng bị xóa
+    return result.rowsAffected[0];
   } catch (error) {
     logger.error(
       `Error removing skill ${skillId} for instructor ${accountId}:`,
@@ -169,7 +159,6 @@ const findInstructorSkills = async (accountId) => {
   }
 };
 
-// --- Instructor Social Links ---
 const createOrUpdateSocialLink = async (
   accountId,
   platform,
@@ -177,7 +166,6 @@ const createOrUpdateSocialLink = async (
   transaction = null
 ) => {
   try {
-    // *** Sử dụng executor từ transaction hoặc pool ***
     const executor = transaction
       ? transaction.request()
       : (await getConnection()).request();
@@ -192,7 +180,7 @@ const createOrUpdateSocialLink = async (
                 UPDATE SET Url = source.Url
             WHEN NOT MATCHED THEN
                 INSERT (AccountID, Platform, Url) VALUES (source.AccountID, source.Platform, source.Url)
-            OUTPUT Inserted.*; -- Trả về bản ghi được insert/update
+            OUTPUT Inserted.*;
         `);
     return result.recordset[0];
   } catch (error) {
@@ -252,15 +240,10 @@ const findInstructorPublicProfile = async (instructorId) => {
     const request = pool.request();
     request.input('AccountID', sql.BigInt, instructorId);
     request.input('InstructorRoleID', sql.VarChar, 'GV');
-    logger.info(typeof instructorId); // Log accountId để kiểm tra
-    // Query lấy UserProfile, InstructorProfile, Skills, SocialLinks
     const profileResult = await request.query(`
             SELECT
-                -- User Profile
                 up.FullName, up.AvatarUrl, up.CoverImageUrl, up.Headline, up.Location,
-                -- Instructor Profile
                 ip.ProfessionalTitle, ip.Bio, ip.AboutMe,
-                -- Account Info (non-sensitive)
                 a.CreatedAt as MemberSince
             FROM Accounts a
             JOIN UserProfiles up ON a.AccountID = up.AccountID
@@ -268,19 +251,14 @@ const findInstructorPublicProfile = async (instructorId) => {
             WHERE a.AccountID = @AccountID AND a.RoleID = @InstructorRoleID AND a.Status = 'ACTIVE';
         `);
     const profile = profileResult.recordset[0];
-    console.log('Profile:', profileResult); // Log profile để kiểm tra
-    console.log('Profile:', profile); // Log profile để kiểm tra
-    if (!profile) return null; // Not an active instructor
+    if (!profile) return null;
 
-    // Lấy Skills
     const skills = await findInstructorSkills(instructorId);
     profile.skills = skills;
 
-    // Lấy Social Links
     const socialLinks = await findInstructorSocialLinks(instructorId);
     profile.socialLinks = socialLinks;
 
-    // Lấy số lượng khóa học của giảng viên
     const courseCountResult = await request.query(`
       SELECT COUNT(*) AS TotalCourses
       FROM Courses
@@ -288,7 +266,6 @@ const findInstructorPublicProfile = async (instructorId) => {
     `);
     profile.totalCourses = courseCountResult.recordset[0]?.TotalCourses || 0;
 
-    // Lấy tổng số học viên từ các khóa học của giảng viên
     const studentCountResult = await request.query(`
       SELECT COUNT(DISTINCT e.AccountID) AS TotalStudents
       FROM Enrollments e
@@ -297,7 +274,6 @@ const findInstructorPublicProfile = async (instructorId) => {
     `);
     profile.totalStudents = studentCountResult.recordset[0]?.TotalStudents || 0;
 
-    // Lấy rating trung bình từ các khóa học của giảng viên
     const averageRatingResult = await request.query(`
       SELECT AVG(c.AverageRating) AS AverageRating
       FROM Courses c
@@ -306,7 +282,6 @@ const findInstructorPublicProfile = async (instructorId) => {
     profile.averageRating = parseFloat(
       averageRatingResult.recordset[0]?.AverageRating || 0
     ).toFixed(2);
-    logger.info('Average Rating:', profile); // Log rating để kiểm tra
     return profile;
   } catch (error) {
     logger.error(
@@ -327,13 +302,11 @@ const getInstructorBankInfo = async (accountId) => {
     const pool = await getConnection();
     const request = pool.request();
     request.input('AccountID', sql.BigInt, accountId);
-    // Chỉ lấy các cột bank info từ InstructorProfiles
     const result = await request.query(`
           SELECT BankAccountNumber, BankName, BankAccountHolderName
           FROM InstructorProfiles
           WHERE AccountID = @AccountID;
       `);
-    // Trả về null nếu chưa có profile hoặc chưa có bank info
     return (
       result.recordset[0] || {
         BankAccountNumber: null,
@@ -358,29 +331,24 @@ const findAllInstructors = async (
   paginationOptions = {}
 ) => {
   const { searchTerm, skillId, minRating } = filterOptions;
-  const {
-    page = 1,
-    limit = 10,
-    sortBy = 'rating:desc', // Mặc định sắp xếp
-  } = paginationOptions;
+  const { page = 1, limit = 10, sortBy = 'rating:desc' } = paginationOptions;
   const offset = (page - 1) * limit;
 
   try {
     const pool = await getConnection();
     const request = pool.request();
 
-    // Input cho RoleID của Instructor
     request.input('InstructorRoleID', sql.VarChar, Roles.INSTRUCTOR);
 
-    const whereClauses = [`acc.RoleID = @InstructorRoleID`]; // Chỉ lấy những user có vai trò INSTRUCTOR
+    const whereClauses = [`acc.RoleID = @InstructorRoleID`];
     let joinClauses = `
       JOIN UserProfiles up ON acc.AccountID = up.AccountID
-      LEFT JOIN InstructorProfiles ip ON acc.AccountID = ip.AccountID -- Thêm JOIN với InstructorProfiles
+      LEFT JOIN InstructorProfiles ip ON acc.AccountID = ip.AccountID
       LEFT JOIN (
           SELECT c.InstructorID, AVG(CAST(cr.Rating AS FLOAT)) as AvgRating
           FROM CourseReviews cr
           JOIN Courses c ON cr.CourseID = c.CourseID
-          WHERE c.InstructorID IS NOT NULL -- Đảm bảo chỉ tính cho các khóa học có giảng viên
+          WHERE c.InstructorID IS NOT NULL
           GROUP BY c.InstructorID
       ) AS instructor_ratings ON acc.AccountID = instructor_ratings.InstructorID
       LEFT JOIN (
@@ -393,24 +361,21 @@ const findAllInstructors = async (
       LEFT JOIN (
           SELECT InstructorID, COUNT(CourseID) as TotalCourses
           FROM Courses
-          WHERE InstructorID IS NOT NULL AND StatusID = 'PUBLISHED' -- Chỉ đếm khóa học đã publish
+          WHERE InstructorID IS NOT NULL AND StatusID = 'PUBLISHED'
           GROUP BY InstructorID
       ) AS course_counts ON acc.AccountID = course_counts.InstructorID
     `;
 
     if (skillId) {
       request.input('SkillID', sql.Int, skillId);
-      // Đảm bảo join InstructorSkills và Skills chỉ khi skillId được cung cấp để tránh join không cần thiết
       joinClauses += `
         JOIN InstructorSkills insk ON acc.AccountID = insk.AccountID
       `;
-      // Không cần join thêm Skills nếu chỉ lọc theo insk.SkillID
       whereClauses.push('insk.SkillID = @SkillID');
     }
 
     if (searchTerm) {
       request.input('SearchTerm', sql.NVarChar, `%${searchTerm}%`);
-      // Tìm kiếm trong FullName, Headline (từ UserProfiles) và ProfessionalTitle (từ InstructorProfiles)
       whereClauses.push(
         '(up.FullName LIKE @SearchTerm OR up.Headline LIKE @SearchTerm OR ip.ProfessionalTitle LIKE @SearchTerm)'
       );
@@ -426,7 +391,6 @@ const findAllInstructors = async (
     const whereCondition =
       whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
 
-    // --- Câu truy vấn đếm tổng số ---
     const countQuery = `
       SELECT COUNT(DISTINCT acc.AccountID) as total
       FROM Accounts acc
@@ -436,9 +400,8 @@ const findAllInstructors = async (
     const countResult = await request.query(countQuery);
     const total = countResult.recordset[0] ? countResult.recordset[0].total : 0;
 
-    // --- Sắp xếp ---
     let orderByClause =
-      'ORDER BY ISNULL(instructor_ratings.AvgRating, 0) DESC, acc.AccountID ASC'; // Mặc định, thêm AccountID để ổn định thứ tự
+      'ORDER BY ISNULL(instructor_ratings.AvgRating, 0) DESC, acc.AccountID ASC';
     if (sortBy) {
       const [field, order] = sortBy.split(':');
       const sortOrder = order?.toLowerCase() === 'asc' ? 'ASC' : 'DESC';
@@ -456,20 +419,17 @@ const findAllInstructors = async (
           orderByClause = `ORDER BY up.FullName ${sortOrder}, acc.AccountID ${sortOrder}`;
           break;
         default:
-          // Use the default orderByClause already set above
           break;
       }
     }
 
-    // --- Câu truy vấn lấy dữ liệu ---
     const dataQuery = `
       SELECT
         acc.AccountID,
-        -- up.Slug, -- UserProfiles không có Slug theo README.md. Nếu cần, phải thêm vào DB hoặc lấy từ nguồn khác.
         up.FullName,
         up.AvatarUrl,
-        ip.ProfessionalTitle, -- Lấy từ InstructorProfiles
-        up.Headline,          -- Lấy từ UserProfiles
+        ip.ProfessionalTitle,
+        up.Headline,
         ISNULL(instructor_ratings.AvgRating, NULL) as AverageRating,
         ISNULL(student_counts.TotalStudents, 0) as TotalStudents,
         ISNULL(course_counts.TotalCourses, 0) as TotalCourses
@@ -485,14 +445,11 @@ const findAllInstructors = async (
     const dataResult = await request.query(dataQuery);
     const instructorsRaw = dataResult.recordset;
 
-    // Lấy MainSkills cho từng giảng viên
     const instructorList = [];
     if (instructorsRaw.length > 0) {
-      // Tối ưu: Lấy tất cả skills của các instructor trong list này bằng một query
       const instructorAccountIDs = instructorsRaw.map((inst) => inst.AccountID);
 
       const allSkillsRequest = pool.request();
-      // Tạo chuỗi các tham số động cho IN clause
       const accountIdParams = instructorAccountIDs
         .map((id, index) => `@SkillAccountID_${index}`)
         .join(',');
@@ -513,7 +470,6 @@ const findAllInstructors = async (
           if (!acc[skill.AccountID]) {
             acc[skill.AccountID] = [];
           }
-          // Giới hạn 3 main skills cho mỗi instructor
           if (acc[skill.AccountID].length < 3) {
             acc[skill.AccountID].push(
               toCamelCaseObject({
@@ -553,14 +509,13 @@ const findStudentsOfInstructor = async ({
   page = 1,
   limit = 10,
   searchTerm = '',
-  status, // 'ACTIVE' or 'INACTIVE'
+  status,
   courseId,
-  sortBy = 'fullName:asc', // Default sort
+  sortBy = 'fullName:asc',
 }) => {
   const pool = await getConnection();
   const request = pool.request();
 
-  // Input parameters
   request.input('InstructorID', sql.BigInt, instructorId);
   request.input('Page', sql.Int, page);
   request.input('Limit', sql.Int, limit);
@@ -568,12 +523,11 @@ const findStudentsOfInstructor = async ({
     'SearchTerm',
     sql.NVarChar,
     searchTerm ? `%${searchTerm}%` : null
-  ); // Gửi NULL nếu searchTerm rỗng
-  request.input('AccountStatus', sql.VarChar(20), status || null); // Gửi NULL nếu status rỗng/undefined
-  request.input('FilterCourseID', sql.BigInt, courseId || null); // Gửi NULL nếu courseId rỗng/undefined
+  );
+  request.input('AccountStatus', sql.VarChar(20), status || null);
+  request.input('FilterCourseID', sql.BigInt, courseId || null);
   request.input('SortBy', sql.NVarChar(100), sortBy);
 
-  // Câu SQL đã được tối ưu ở trên
   const optimizedQuery = `
     DECLARE @Offset INT = (@Page - 1) * @Limit;
     DECLARE @OrderByColumn NVARCHAR(100) = 'up.FullName';
@@ -669,11 +623,9 @@ const findStudentsOfInstructor = async ({
     OFFSET @Offset ROWS FETCH NEXT @Limit ROWS ONLY;
   `;
   const result = await request.query(optimizedQuery);
-  // Lấy total từ dòng đầu tiên (nếu có kết quả) hoặc từ một query riêng nếu query chính không trả về record nào
   const total =
     result.recordset.length > 0 ? result.recordset[0].totalCount : 0;
 
-  // Loại bỏ cột totalCount khỏi mỗi student object trước khi trả về FE
   const students = result.recordset.map(
     ({ totalCount, ...student }) => student
   );

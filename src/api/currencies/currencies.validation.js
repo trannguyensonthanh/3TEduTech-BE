@@ -1,5 +1,4 @@
 // File: src/api/currencies/currencies.validation.js
-
 const Joi = require('joi');
 
 const createCurrency = {
@@ -29,7 +28,7 @@ const updateCurrency = {
       type: Joi.string().valid('FIAT', 'CRYPTO'),
       decimalPlaces: Joi.number().integer().min(0).max(18),
     })
-    .min(1), // Phải có ít nhất 1 trường để cập nhật
+    .min(1),
 };
 
 const deleteCurrency = {

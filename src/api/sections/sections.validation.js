@@ -1,5 +1,6 @@
 const Joi = require('joi');
 
+// Tạo section mới
 const createSection = {
   params: Joi.object().keys({
     courseId: Joi.number().integer().required(),
@@ -7,36 +8,39 @@ const createSection = {
   body: Joi.object().keys({
     sectionName: Joi.string().required().max(255),
     description: Joi.string().allow(null, ''),
-    sectionOrder: Joi.number().integer().min(0).required(), // Thứ tự section, bắt buộc và >= 0
+    sectionOrder: Joi.number().integer().min(0),
   }),
 };
 
+// Lấy section theo courseId
 const getSections = {
-  // Lấy theo courseId
   params: Joi.object().keys({
     courseId: Joi.number().integer().required(),
   }),
 };
 
+// Cập nhật section
 const updateSection = {
   params: Joi.object().keys({
     sectionId: Joi.number().integer().required(),
-    courseId: Joi.number().integer().required(), // courseId cũng cần thiết để xác thực quyền truy cập
+    courseId: Joi.number().integer().required(),
   }),
   body: Joi.object()
     .keys({
       sectionName: Joi.string().max(255),
       description: Joi.string().allow(null, ''),
     })
-    .min(1), // Phải có ít nhất 1 trường
+    .min(1),
 };
 
+// Xóa section
 const deleteSection = {
   params: Joi.object().keys({
     sectionId: Joi.number().integer().required(),
   }),
 };
 
+// Cập nhật thứ tự các section
 const updateSectionsOrder = {
   params: Joi.object().keys({
     courseId: Joi.number().integer().required(),
@@ -49,7 +53,7 @@ const updateSectionsOrder = {
       })
     )
     .min(1)
-    .required(), // Phải là mảng, có ít nhất 1 phần tử
+    .required(),
 };
 
 module.exports = {

@@ -13,25 +13,22 @@ const Roles = require('../../core/enums/Roles');
 const router = express.Router();
 
 // --- Instructor Routes ---
-// Các route này yêu cầu đăng nhập và vai trò là INSTRUCTOR
 router.get(
   '/balance',
   authenticate,
-  authorize([Roles.INSTRUCTOR]),
+  authorize([Roles.INSTRUCTOR, Roles.SUPERADMIN]),
   financialsController.getMyAvailableBalance
 );
 
 router.post(
   '/withdrawals/request',
   authenticate,
-  authorize([Roles.INSTRUCTOR]),
+  authorize([Roles.INSTRUCTOR, Roles.SUPERADMIN]),
   validate(financialsValidation.requestWithdrawal),
   financialsController.requestWithdrawal
 );
 
 // --- Admin Routes ---
-// Các route này yêu cầu đăng nhập và vai trò ADMIN/SUPERADMIN
-// Ví dụ: xem và xử lý yêu cầu rút tiền
 router.patch(
   '/withdrawals/:requestId/review',
   authenticate,
@@ -42,7 +39,7 @@ router.patch(
 
 // --- Thêm Admin Routes cho Payout Management ---
 router.get(
-  '/payouts', // Lấy danh sách payouts
+  '/payouts',
   authenticate,
   authorize([Roles.ADMIN, Roles.SUPERADMIN]),
   validate(financialsValidation.getPayouts),
@@ -50,45 +47,33 @@ router.get(
 );
 
 router.patch(
-  '/payouts/:payoutId/process', // Đánh dấu đã xử lý chi trả
+  '/payouts/:payoutId/process',
   authenticate,
   authorize([Roles.ADMIN, Roles.SUPERADMIN]),
   validate(financialsValidation.processPayout),
   financialsController.processPayoutExecution
 );
 
-// // Thêm route GET /withdrawals (Admin), POST /payouts/:payoutId/process (Admin) nếu cần
-// router.get(
-//   '/withdrawals/history', // Lịch sử yêu cầu rút tiền
-//   authenticate,
-//   authorize([Roles.INSTRUCTOR]),
-//   validate(financialsValidation.getMyWithdrawalHistory),
-//   financialsController.getMyWithdrawalHistory
-// );
-
-// router.get(
-//   '/payouts/history', // Lịch sử chi trả
-//   authenticate,
-//   authorize([Roles.INSTRUCTOR]),
-//   validate(financialsValidation.getMyPayoutHistory),
-//   financialsController.getMyPayoutHistory
-// );
+router.get(
+  '/withdrawal-requests',
+  validate(financialsValidation.getWithdrawalRequests),
+  financialsController.getWithdrawalRequests
+);
 
 router.get(
-  '/payout-activity', // Đổi tên route cho rõ nghĩa "hoạt động"
+  '/payout-activity',
   authenticate,
   authorize([Roles.INSTRUCTOR, Roles.SUPERADMIN]),
   validate(financialsValidation.getWithdrawalActivityHistory),
   financialsController.getWithdrawalActivityHistory
 );
 
-// Sửa route này
 router.get(
-  '/transactions', // Hoặc giữ '/revenue-details' nếu muốn
+  '/transactions',
   authenticate,
   authorize([Roles.INSTRUCTOR, Roles.SUPERADMIN]),
-  validate(financialsValidation.getMyTransactions), // Validation mới
-  financialsController.getMyTransactions // Controller mới
+  validate(financialsValidation.getMyTransactions),
+  financialsController.getMyTransactions
 );
 
 router.get(

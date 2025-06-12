@@ -1,4 +1,3 @@
-// src/api/languages/languages.repository.js
 const httpStatus = require('http-status').status;
 const { getConnection, sql } = require('../../database/connection');
 const logger = require('../../utils/logger');
@@ -27,7 +26,6 @@ const createLanguage = async (langData) => {
   } catch (error) {
     logger.error('Error creating language:', error);
     if (error.number === 2627) {
-      // PK or UQ violation
       if (error.message.includes('PK_Languages')) {
         throw new ApiError(
           httpStatus.BAD_REQUEST,
@@ -71,7 +69,7 @@ const findAllLanguages = async (options = {}) => {
     page = 1,
     limit = 0,
     sortBy = 'DisplayOrder:asc',
-  } = options; // limit 0 để lấy tất cả
+  } = options;
   const offset = (page - 1) * limit;
 
   try {
@@ -90,14 +88,12 @@ const findAllLanguages = async (options = {}) => {
       whereClauses.length > 0 ? ` WHERE ${whereClauses.join(' AND ')}` : '';
     baseQuery += whereCondition;
 
-    // Đếm tổng số lượng (theo filter)
     const countResult = await request.query(
       `SELECT COUNT(*) as total ${baseQuery}`
     );
     const { total } = countResult.recordset[0];
 
-    // Sắp xếp
-    let orderByClause = 'ORDER BY DisplayOrder ASC, LanguageName ASC'; // Mặc định
+    let orderByClause = 'ORDER BY DisplayOrder ASC, LanguageName ASC';
     if (sortBy) {
       const [field, order] = sortBy.split(':');
       const orderDirection = order?.toLowerCase() === 'desc' ? 'DESC' : 'ASC';
@@ -108,14 +104,12 @@ const findAllLanguages = async (options = {}) => {
         CreatedAt: 'CreatedAt',
       };
       if (allowedSortFields[field]) {
-        orderByClause = `ORDER BY ${allowedSortFields[field]} ${orderDirection}, LanguageCode ASC`; // Thêm LanguageCode để đảm bảo thứ tự ổn định
+        orderByClause = `ORDER BY ${allowedSortFields[field]} ${orderDirection}, LanguageCode ASC`;
       }
     }
 
-    // Lấy dữ liệu phân trang
     let dataQuery = `SELECT * ${baseQuery} ${orderByClause}`;
     if (limit > 0) {
-      // Chỉ phân trang nếu limit > 0
       request.input('Limit', sql.Int, limit);
       request.input('Offset', sql.Int, offset);
       dataQuery += ' OFFSET @Offset ROWS FETCH NEXT @Limit ROWS ONLY';
@@ -154,7 +148,7 @@ const updateLanguage = async (languageCode, updateData) => {
       setClauses.push('DisplayOrder = @DisplayOrder');
     }
 
-    if (setClauses.length === 1) return null; // Không có gì update
+    if (setClauses.length === 1) return null;
 
     const result = await request.query(`
             UPDATE Languages SET ${setClauses.join(', ')}
@@ -189,7 +183,6 @@ const deleteLanguage = async (languageCode) => {
   } catch (error) {
     logger.error(`Error deleting language ${languageCode}:`, error);
     if (error.number === 547) {
-      // FK Constraint violation
       throw new ApiError(
         httpStatus.BAD_REQUEST,
         'Không thể xóa ngôn ngữ vì đang được sử dụng bởi khóa học hoặc phụ đề.'

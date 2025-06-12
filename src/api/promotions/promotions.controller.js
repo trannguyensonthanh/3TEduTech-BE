@@ -3,6 +3,7 @@ const promotionService = require('./promotions.service');
 const { catchAsync } = require('../../utils/catchAsync');
 const { pick } = require('../../utils/pick');
 const cartService = require('../carts/carts.service');
+
 // --- Admin Controllers ---
 const createPromotion = catchAsync(async (req, res) => {
   const promotion = await promotionService.createPromotion(req.body);
@@ -35,27 +36,28 @@ const deactivatePromotion = catchAsync(async (req, res) => {
 });
 
 // --- Có thể thêm Controller cho User/Public ---
-// Ví dụ: Validate mã giảm giá cho giỏ hàng hiện tại
 const validatePromotionCode = catchAsync(async (req, res) => {
   const { promotionCode } = req.body;
-  // Cần lấy tổng tiền giỏ hàng hiện tại của user
   const accountId = req.user.id;
   const cartDetails = await cartService.viewCart(accountId, req.targetCurrency);
-  const orderTotal = cartDetails.summary.finalPrice; // Dùng final price của cart
+  const orderTotal = cartDetails.summary.finalPrice;
 
-  // Chỉ validate, không áp dụng ngay
   const validationResult = await promotionService.validateAndApplyPromotion(
     promotionCode,
     orderTotal
   );
 
-  // Trả về thông tin giảm giá nếu hợp lệ
   res.status(httpStatus.OK).send({
     isValid: true,
     discountAmount: validationResult.discountAmount,
     promotionId: validationResult.promotionId,
     message: `Mã hợp lệ. Bạn được giảm ${validationResult.discountAmount}.`,
   });
+});
+
+const deletePromotion = catchAsync(async (req, res) => {
+  await promotionService.deletePromotion(req.params.promotionId);
+  res.status(httpStatus.NO_CONTENT).send();
 });
 
 module.exports = {
@@ -65,4 +67,5 @@ module.exports = {
   updatePromotion,
   deactivatePromotion,
   validatePromotionCode,
+  deletePromotion,
 };

@@ -1,5 +1,3 @@
-// File: src/utils/nowpayments.util.js (Tạo file mới)
-
 const axios = require('axios');
 const crypto = require('crypto');
 const httpStatus = require('http-status').status;

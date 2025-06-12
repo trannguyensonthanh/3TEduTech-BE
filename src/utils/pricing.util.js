@@ -1,7 +1,5 @@
-// File: src/utils/pricing.util.js (Tạo file mới)
-
 const { Decimal } = require('decimal.js');
-const exchangeRateService = require('../api/exchangeRates/exchange-rates.service');
+const exchangeRateService = require('../api/exchangeRates/exchangeRates.service');
 const config = require('../config');
 const logger = require('./logger');
 
@@ -44,7 +42,6 @@ const createPricingObject = async (item, targetCurrency) => {
       );
       pricing.display.exchangeRateUsed = rate.toNumber();
 
-      // Quy đổi giá
       pricing.display.originalPrice = originalPrice
         .times(rate)
         .toDP(2)

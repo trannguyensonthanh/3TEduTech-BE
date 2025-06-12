@@ -2,14 +2,15 @@
 
 const httpStatus = require('http-status').status;
 const discussionRepository = require('./discussions.repository');
-const courseRepository = require('../courses/courses.repository'); // Check course access
-const lessonRepository = require('../lessons/lessons.repository'); // Check lesson exists
-const enrollmentService = require('../enrollments/enrollments.service'); // Check enrollment
+const courseRepository = require('../courses/courses.repository');
+const lessonRepository = require('../lessons/lessons.repository');
+const enrollmentService = require('../enrollments/enrollments.service');
 const ApiError = require('../../core/errors/ApiError');
 const Roles = require('../../core/enums/Roles');
 const logger = require('../../utils/logger');
 const notificationService = require('../notifications/notifications.service');
 const { toCamelCaseObject } = require('../../utils/caseConverter');
+
 /**
  * Helper function to check if user can access/participate in discussions for a course.
  * Requires enrollment, or being the instructor, or an admin.
@@ -29,7 +30,7 @@ const checkDiscussionAccess = async (
       `Bạn cần đăng nhập để ${actionDescription}.`
     );
   }
-  const course = await courseRepository.findCourseById(courseId, true); // Lấy cả draft để instructor/admin truy cập
+  const course = await courseRepository.findCourseById(courseId, true);
   if (!course) {
     throw new ApiError(httpStatus.NOT_FOUND, 'Không tìm thấy khóa học.');
   }
@@ -66,7 +67,6 @@ const createThread = async (threadData, user) => {
     'tạo chủ đề thảo luận'
   );
 
-  // Nếu có lessonId, kiểm tra xem lesson có thuộc course không
   if (lessonId) {
     const lesson = await lessonRepository.findLessonById(lessonId);
 
@@ -85,7 +85,6 @@ const createThread = async (threadData, user) => {
     CreatedByAccountID: user.id,
   };
   const newThread = await discussionRepository.createThread(newThreadData);
-  // Lấy lại để có thông tin user tạo
   const thread = await discussionRepository.findThreadById(newThread.ThreadID);
   return toCamelCaseObject(thread);
 };
@@ -115,7 +114,7 @@ const getThreads = async (filters, options, user) => {
   const result = await discussionRepository.findThreads(filters, options);
 
   return {
-    threads: toCamelCaseObject(result.threads), // Dạng phẳng, frontend tự xử lý nesting nếu cần
+    threads: toCamelCaseObject(result.threads),
     total: result.total,
     page: parseInt(page, 10),
     limit: parseInt(limit, 10),
@@ -180,12 +179,10 @@ const deleteThread = async (threadId, user) => {
   logger.info(`Discussion thread ${threadId} deleted by user ${user.id}`);
 };
 
-// === Posts ===
-
 /**
  * Tạo post mới (reply).
  * @param {number} threadId
- * @param {object} postData - { text, parentPostId (optional) }
+ * @param {object} postData -
  * @param {object} user
  * @returns {Promise<object>}
  */
@@ -204,7 +201,6 @@ const createPost = async (threadId, postData, user) => {
     'tham gia thảo luận'
   );
 
-  // Kiểm tra parentPostId nếu có
   if (parentPostId) {
     const parentPost = await discussionRepository.findPostById(parentPostId);
     if (!parentPost || Number(parentPost.ThreadID) !== threadId) {
@@ -220,16 +216,12 @@ const createPost = async (threadId, postData, user) => {
     ParentPostID: parentPostId,
     AccountID: user.id,
     PostText: text,
-    // Đánh dấu nếu người post là instructor của khóa học này
     IsInstructorPost:
       user.role === Roles.INSTRUCTOR && course.InstructorID === user.id,
   };
 
   const newPost = await discussionRepository.createPost(newPostData);
-  // Cập nhật UpdatedAt của thread?
-  // await discussionRepository.updateThreadTimestamp(threadId); // Cần thêm hàm này nếu muốn
-  // Lấy lại để có thông tin author
-  // Gửi thông báo cho người tạo thread (nếu người reply không phải là họ)
+
   if (thread && thread.CreatedByAccountID !== user.id) {
     try {
       const message = `${
@@ -239,7 +231,7 @@ const createPost = async (threadId, postData, user) => {
         thread.CreatedByAccountID,
         'NEW_DISCUSSION_REPLY',
         message,
-        { type: 'DiscussionThread', id: threadId } // Hoặc type 'DiscussionPost', id: newPost.PostID
+        { type: 'DiscussionThread', id: threadId }
       );
     } catch (notifyError) {
       logger.error(
@@ -248,8 +240,7 @@ const createPost = async (threadId, postData, user) => {
       );
     }
   }
-  // TODO: Gửi thông báo cho những người tham gia khác trong thread? (Phức tạp hơn)
-  // TODO: Gửi thông báo cho instructor nếu có reply trong khóa học của họ?
+
   return discussionRepository.findPostById(newPost.PostID);
 };
 
@@ -277,7 +268,7 @@ const getPostsByThread = async (threadId, options, user) => {
   );
 
   return {
-    posts: toCamelCaseObject(result.posts), // Dạng phẳng, frontend tự xử lý nesting nếu cần
+    posts: toCamelCaseObject(result.posts),
     total: result.total,
     page: parseInt(page, 10),
     limit: parseInt(limit, 10),
@@ -312,7 +303,7 @@ const updatePost = async (postId, text, user) => {
   }
 
   const updatedPost = await discussionRepository.updatePostById(postId, text);
-  // Lấy lại để có thông tin author
+
   return discussionRepository.findPostById(updatedPost.PostID);
 };
 
@@ -341,8 +332,6 @@ const deletePost = async (postId, user) => {
     );
   }
 
-  // TODO: Xử lý các bài viết con (replies) nếu có? Xóa theo? Đặt ParentPostID thành NULL?
-  // Hiện tại đang xóa cứng (nếu DB cho phép).
   await discussionRepository.deletePostById(postId);
   logger.info(`Discussion post ${postId} deleted by user ${user.id}`);
 };
@@ -355,7 +344,7 @@ const deletePost = async (postId, user) => {
  * @returns {Promise<object>}
  */
 const closeOrOpenThread = async (threadId, isClosed, user) => {
-  const thread = await discussionRepository.findThreadById(threadId); // Hàm này đã join lấy CourseInstructorID
+  const thread = await discussionRepository.findThreadById(threadId);
   if (!thread) {
     throw new ApiError(
       httpStatus.NOT_FOUND,
@@ -363,7 +352,6 @@ const closeOrOpenThread = async (threadId, isClosed, user) => {
     );
   }
 
-  // Kiểm tra quyền: Chỉ instructor của khóa học hoặc Admin
   const isAdmin = user.role === Roles.ADMIN || user.role === Roles.SUPERADMIN;
   const isCourseInstructor =
     user.role === Roles.INSTRUCTOR && thread.CourseInstructorID === user.id;
@@ -380,7 +368,6 @@ const closeOrOpenThread = async (threadId, isClosed, user) => {
     isClosed
   );
   if (!updatedThread) {
-    // Lỗi không mong muốn
     throw new ApiError(
       httpStatus.INTERNAL_SERVER_ERROR,
       'Cập nhật trạng thái chủ đề thất bại.'
@@ -390,37 +377,15 @@ const closeOrOpenThread = async (threadId, isClosed, user) => {
   logger.info(
     `Thread ${threadId} status changed to IsClosed=${isClosed} by user ${user.id}`
   );
-  // // TODO: Gửi thông báo nếu cần (ví dụ: cho người tạo thread)
-  // // Gửi thông báo cho người tạo thread nếu trạng thái bị thay đổi bởi người khác
-  // if (thread.CreatedByAccountID !== user.id) {
-  //   try {
-  //     const action = isClosed ? 'đã đóng' : 'đã mở lại';
-  //     const message = `Chủ đề "${thread.Title}" của bạn ${action} bởi ${user.displayName || 'quản trị viên'}.`;
-  //     await notificationService.createNotification(
-  //       thread.CreatedByAccountID,
-  //       'THREAD_STATUS_CHANGED',
-  //       message,
-  //       { type: 'DiscussionThread', id: threadId }
-  //     );
-  //   } catch (notifyError) {
-  //     logger.error(
-  //       `Failed to send thread status notification for thread ${threadId}:`,
-  //       notifyError
-  //     );
-  //   }
-  // }
 
-  // Trả về thread đã cập nhật với đầy đủ thông tin
   return discussionRepository.findThreadById(threadId);
 };
 
 module.exports = {
-  // Threads
   createThread,
   getThreads,
   updateThread,
   deleteThread,
-  // Posts
   createPost,
   getPostsByThread,
   updatePost,

@@ -6,8 +6,6 @@ const ApiError = require('../../core/errors/ApiError');
 
 // --- User Routes ---
 const getMyProfile = catchAsync(async (req, res) => {
-  // req.user.id được gắn bởi middleware authenticate
-  console.log('User ID:', req.user.id); // Kiểm tra xem req.user có tồn tại không
   const profile = await userService.getUserProfile(req.user.id);
   res.status(httpStatus.OK).send(profile);
 });
@@ -47,8 +45,6 @@ const updateUserRole = catchAsync(async (req, res) => {
     .send({ message: 'Cập nhật vai trò người dùng thành công.' });
 });
 
-// Có thể thêm deleteUser (Admin) nếu cần
-
 const updateMyAvatar = catchAsync(async (req, res) => {
   if (!req.file) {
     throw new ApiError(
@@ -57,7 +53,7 @@ const updateMyAvatar = catchAsync(async (req, res) => {
     );
   }
   const updatedProfile = await userService.updateUserAvatar(
-    req.user.id, // Lấy accountId từ req.user (được gắn bởi middleware authenticate)
+    req.user.id,
     req.file
   );
   res.status(httpStatus.OK).send(updatedProfile);

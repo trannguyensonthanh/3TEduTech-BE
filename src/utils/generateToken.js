@@ -1,7 +1,7 @@
 const httpStatus = require('http-status').status;
 const jwt = require('jsonwebtoken');
 const { v4: uuidv4 } = require('uuid');
-const moment = require('moment'); // Cài đặt: npm install moment
+const moment = require('moment');
 const jwtConfig = require('../config/jwt');
 const logger = require('./logger');
 const ApiError = require('../core/errors/ApiError');
@@ -48,7 +48,7 @@ const verifyToken = async (token) => {
       jwtConfig.secret,
       jwtConfig.verifyOptions
     );
-
+    console.log('Token payload:', token);
     return payload;
   } catch (error) {
     if (error instanceof jwt.TokenExpiredError) {

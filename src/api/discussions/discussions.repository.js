@@ -5,19 +5,17 @@ const ApiError = require('../../core/errors/ApiError');
 const { getConnection, sql } = require('../../database/connection');
 const logger = require('../../utils/logger');
 
-// === Discussion Threads ===
-
 /**
- * Tạo thread mới.
- * @param {object} threadData - { CourseID, LessonID, Title, CreatedByAccountID }
- * @returns {Promise<object>} - Thread vừa tạo.
+ * Tạo một chủ đề thảo luận (thread) mới trong cơ sở dữ liệu.
+ * @param {object} threadData - Dữ liệu của thread, bao gồm { CourseID, LessonID, Title, CreatedByAccountID }.
+ * @returns {Promise<object>} - Trả về đối tượng thread vừa được tạo.
  */
 const createThread = async (threadData) => {
   try {
     const pool = await getConnection();
     const request = pool.request();
     request.input('CourseID', sql.BigInt, threadData.CourseID);
-    request.input('LessonID', sql.BigInt, threadData.LessonID); // Có thể NULL
+    request.input('LessonID', sql.BigInt, threadData.LessonID);
     request.input('Title', sql.NVarChar, threadData.Title);
     request.input(
       'CreatedByAccountID',
@@ -38,16 +36,16 @@ const createThread = async (threadData) => {
 };
 
 /**
- * Tìm thread bằng ID.
- * @param {number} threadId
- * @returns {Promise<object|null>} - Thread object kèm thông tin người tạo và khóa học.
+ * Tìm một thread bằng ID, kèm theo thông tin người tạo và khóa học.
+ * @param {number} threadId - ID của thread cần tìm.
+ * @returns {Promise<object|null>} - Trả về đối tượng thread hoặc null nếu không tìm thấy.
  */
 const findThreadById = async (threadId) => {
   try {
     const pool = await getConnection();
     const request = pool.request();
     request.input('ThreadID', sql.BigInt, threadId);
-    // Join để lấy thông tin cần thiết cho permission check và hiển thị
+
     const result = await request.query(`
             SELECT
                 dt.*,
@@ -67,14 +65,14 @@ const findThreadById = async (threadId) => {
 };
 
 /**
- * Lấy danh sách threads của course hoặc lesson (phân trang).
- * @param {object} filters - { courseId, lessonId }
- * @param {object} options - { page, limit, sortBy }
- * @returns {Promise<{threads: object[], total: number}>}
+ * Lấy danh sách các thread theo khóa học hoặc bài học, có hỗ trợ phân trang và sắp xếp.
+ * @param {object} filters - Bộ lọc, bao gồm { courseId, lessonId }.
+ * @param {object} options - Tùy chọn phân trang và sắp xếp, bao gồm { page, limit, sortBy }.
+ * @returns {Promise<{threads: object[], total: number}>} - Trả về danh sách thread và tổng số lượng.
  */
 const findThreads = async (filters = {}, options = {}) => {
   const { courseId, lessonId } = filters;
-  const { page = 1, limit = 10, sortBy = 'UpdatedAt:desc' } = options; // Sắp xếp theo cập nhật mới nhất?
+  const { page = 1, limit = 10, sortBy = 'UpdatedAt:desc' } = options;
   const offset = (page - 1) * limit;
 
   try {
@@ -90,8 +88,7 @@ const findThreads = async (filters = {}, options = {}) => {
       request.input('LessonID', sql.BigInt, lessonId);
       whereClauses.push('dt.LessonID = @LessonID');
     } else {
-      // Nếu không filter theo lesson cụ thể, có thể chỉ lấy thread chung của course?
-      // whereClauses.push("dt.LessonID IS NULL"); // Bỏ comment nếu muốn
+      whereClauses.push('dt.LessonID IS NULL');
     }
 
     const whereCondition =
@@ -101,7 +98,6 @@ const findThreads = async (filters = {}, options = {}) => {
             FROM DiscussionThreads dt
             JOIN UserProfiles up ON dt.CreatedByAccountID = up.AccountID
             LEFT JOIN (
-                -- Tìm thời gian post cuối cùng cho mỗi thread để sắp xếp theo UpdatedAt
                 SELECT ThreadID, MAX(CreatedAt) as LastPostTime
                 FROM DiscussionPosts
                 GROUP BY ThreadID
@@ -114,7 +110,6 @@ const findThreads = async (filters = {}, options = {}) => {
     );
     const { total } = countResult.recordset[0];
 
-    // Sắp xếp: Ưu tiên theo thời gian post cuối cùng (lp.LastPostTime), sau đó là thời gian tạo thread
     let orderByClause =
       'ORDER BY ISNULL(lp.LastPostTime, dt.CreatedAt) DESC, dt.CreatedAt DESC';
     if (sortBy === 'CreatedAt:desc') {
@@ -122,16 +117,15 @@ const findThreads = async (filters = {}, options = {}) => {
     } else if (sortBy === 'CreatedAt:asc') {
       orderByClause = 'ORDER BY dt.CreatedAt ASC';
     }
-    // Thêm các tùy chọn sort khác nếu cần
 
     request.input('Limit', sql.Int, limit);
     request.input('Offset', sql.Int, offset);
     const dataResult = await request.query(`
             SELECT
                 dt.ThreadID, dt.Title, dt.CourseID, dt.LessonID, dt.CreatedByAccountID, dt.CreatedAt,
-                ISNULL(lp.LastPostTime, dt.CreatedAt) as UpdatedAt, -- Coi thời gian post cuối là UpdatedAt
+                ISNULL(lp.LastPostTime, dt.CreatedAt) as UpdatedAt,
                 up.FullName as CreatorFullName, up.AvatarUrl as CreatorAvatar,
-                (SELECT COUNT(*) FROM DiscussionPosts WHERE ThreadID = dt.ThreadID) as PostCount -- Đếm số lượng post
+                (SELECT COUNT(*) FROM DiscussionPosts WHERE ThreadID = dt.ThreadID) as PostCount
             ${commonQuery}
             ${orderByClause}
             OFFSET @Offset ROWS FETCH NEXT @Limit ROWS ONLY;
@@ -145,10 +139,10 @@ const findThreads = async (filters = {}, options = {}) => {
 };
 
 /**
- * Cập nhật tiêu đề thread.
- * @param {number} threadId
- * @param {string} title
- * @returns {Promise<object>}
+ * Cập nhật tiêu đề của một thread.
+ * @param {number} threadId - ID của thread cần cập nhật.
+ * @param {string} title - Tiêu đề mới.
+ * @returns {Promise<object>} - Trả về đối tượng thread đã được cập nhật.
  */
 const updateThreadTitle = async (threadId, title) => {
   try {
@@ -156,7 +150,7 @@ const updateThreadTitle = async (threadId, title) => {
     const request = pool.request();
     request.input('ThreadID', sql.BigInt, threadId);
     request.input('Title', sql.NVarChar, title);
-    request.input('UpdatedAt', sql.DateTime2, new Date()); // Cập nhật UpdatedAt của thread
+    request.input('UpdatedAt', sql.DateTime2, new Date());
     const result = await request.query(`
             UPDATE DiscussionThreads SET Title = @Title, UpdatedAt = @UpdatedAt
             OUTPUT Inserted.*
@@ -170,9 +164,9 @@ const updateThreadTitle = async (threadId, title) => {
 };
 
 /**
- * Xóa thread (và các post liên quan do FK CASCADE).
- * @param {number} threadId
- * @returns {Promise<number>}
+ * Xóa một thread khỏi cơ sở dữ liệu bằng ID.
+ * @param {number} threadId - ID của thread cần xóa.
+ * @returns {Promise<number>} - Trả về số dòng bị ảnh hưởng (thường là 1 hoặc 0).
  */
 const deleteThreadById = async (threadId) => {
   try {
@@ -189,19 +183,17 @@ const deleteThreadById = async (threadId) => {
   }
 };
 
-// === Discussion Posts ===
-
 /**
- * Tạo post mới (reply).
- * @param {object} postData - { ThreadID, ParentPostID, AccountID, PostText, IsInstructorPost }
- * @returns {Promise<object>} - Post vừa tạo.
+ * Tạo một bài viết (post) mới trong một thread.
+ * @param {object} postData - Dữ liệu của bài viết, bao gồm { ThreadID, ParentPostID, AccountID, PostText, IsInstructorPost }.
+ * @returns {Promise<object>} - Trả về đối tượng post vừa được tạo.
  */
 const createPost = async (postData) => {
   try {
     const pool = await getConnection();
     const request = pool.request();
     request.input('ThreadID', sql.BigInt, postData.ThreadID);
-    request.input('ParentPostID', sql.BigInt, postData.ParentPostID); // Có thể NULL
+    request.input('ParentPostID', sql.BigInt, postData.ParentPostID);
     request.input('AccountID', sql.BigInt, postData.AccountID);
     request.input('PostText', sql.NVarChar, postData.PostText);
     request.input(
@@ -215,7 +207,7 @@ const createPost = async (postData) => {
             OUTPUT Inserted.*
             VALUES (@ThreadID, @ParentPostID, @AccountID, @PostText, @IsInstructorPost);
         `);
-    // Cập nhật UpdatedAt của Thread cha? Có thể làm ở service hoặc trigger
+
     return result.recordset[0];
   } catch (error) {
     logger.error('Error creating discussion post:', error);
@@ -224,9 +216,9 @@ const createPost = async (postData) => {
 };
 
 /**
- * Tìm post bằng ID.
- * @param {number} postId
- * @returns {Promise<object|null>} - Post object kèm thông tin người tạo.
+ * Tìm một bài viết (post) bằng ID, kèm theo thông tin người tạo.
+ * @param {number} postId - ID của bài viết cần tìm.
+ * @returns {Promise<object|null>} - Trả về đối tượng post hoặc null nếu không tìm thấy.
  */
 const findPostById = async (postId) => {
   try {
@@ -235,11 +227,11 @@ const findPostById = async (postId) => {
     request.input('PostID', sql.BigInt, postId);
     const result = await request.query(`
             SELECT dp.*, up.FullName as AuthorFullName, up.AvatarUrl as AuthorAvatar,
-                   dt.CourseID -- Lấy CourseID để check quyền
+                   dt.CourseID
             FROM DiscussionPosts dp
             JOIN Accounts acc ON dp.AccountID = acc.AccountID
             JOIN UserProfiles up ON acc.AccountID = up.AccountID
-            JOIN DiscussionThreads dt ON dp.ThreadID = dt.ThreadID -- Join thread để lấy CourseID
+            JOIN DiscussionThreads dt ON dp.ThreadID = dt.ThreadID
             WHERE dp.PostID = @PostID;
         `);
     return result.recordset[0] || null;
@@ -250,13 +242,13 @@ const findPostById = async (postId) => {
 };
 
 /**
- * Lấy danh sách các post của một thread (dạng phẳng, sắp xếp theo thời gian).
- * @param {number} threadId
- * @param {object} options - { page, limit }
- * @returns {Promise<{posts: object[], total: number}>}
+ * Lấy danh sách các bài viết (post) của một thread, có hỗ trợ phân trang.
+ * @param {number} threadId - ID của thread chứa các bài viết.
+ * @param {object} options - Tùy chọn phân trang, bao gồm { page, limit }.
+ * @returns {Promise<{posts: object[], total: number}>} - Trả về danh sách post và tổng số lượng.
  */
 const findPostsByThreadId = async (threadId, options = {}) => {
-  const { page = 1, limit = 20 } = options; // Lấy nhiều hơn mặc định
+  const { page = 1, limit = 20 } = options;
   const offset = (page - 1) * limit;
 
   try {
@@ -283,7 +275,7 @@ const findPostsByThreadId = async (threadId, options = {}) => {
                 dp.IsInstructorPost, dp.CreatedAt, dp.UpdatedAt,
                 up.FullName as AuthorFullName, up.AvatarUrl as AuthorAvatar
             ${commonQuery}
-            ORDER BY dp.CreatedAt ASC -- Hiển thị theo thứ tự thời gian
+            ORDER BY dp.CreatedAt ASC
             OFFSET @Offset ROWS FETCH NEXT @Limit ROWS ONLY;
         `);
 
@@ -295,10 +287,10 @@ const findPostsByThreadId = async (threadId, options = {}) => {
 };
 
 /**
- * Cập nhật nội dung post.
- * @param {number} postId
- * @param {string} postText
- * @returns {Promise<object>}
+ * Cập nhật nội dung của một bài viết (post).
+ * @param {number} postId - ID của bài viết cần cập nhật.
+ * @param {string} postText - Nội dung mới của bài viết.
+ * @returns {Promise<object>} - Trả về đối tượng post đã được cập nhật.
  */
 const updatePostById = async (postId, postText) => {
   try {
@@ -320,23 +312,23 @@ const updatePostById = async (postId, postText) => {
 };
 
 /**
- * Xóa post.
- * @param {number} postId
- * @returns {Promise<number>}
+ * Xóa một bài viết (post) khỏi cơ sở dữ liệu bằng ID.
+ * @param {number} postId - ID của bài viết cần xóa.
+ * @returns {Promise<number>} - Trả về số dòng bị ảnh hưởng.
  */
 const deletePostById = async (postId) => {
   try {
     const pool = await getConnection();
     const request = pool.request();
     request.input('PostID', sql.BigInt, postId);
-    // Cân nhắc xóa mềm hoặc chỉ xóa nội dung thay vì xóa cứng?
+
     const result = await request.query(
       'DELETE FROM DiscussionPosts WHERE PostID = @PostID'
     );
     return result.rowsAffected[0];
   } catch (error) {
     logger.error(`Error deleting post ${postId}:`, error);
-    // Kiểm tra FK nếu ParentPostID có ràng buộc NO ACTION
+
     if (error.number === 547) {
       throw new ApiError(
         httpStatus.BAD_REQUEST,
@@ -348,10 +340,10 @@ const deletePostById = async (postId) => {
 };
 
 /**
- * Cập nhật trạng thái IsClosed của thread.
- * @param {number} threadId
- * @param {boolean} isClosed
- * @returns {Promise<object|null>} Thread đã cập nhật hoặc null nếu không tìm thấy.
+ * Cập nhật trạng thái đóng/mở (IsClosed) của một thread.
+ * @param {number} threadId - ID của thread cần cập nhật.
+ * @param {boolean} isClosed - Trạng thái mới (true là đóng, false là mở).
+ * @returns {Promise<object|null>} - Trả về đối tượng thread đã được cập nhật hoặc null nếu không tìm thấy.
  */
 const updateThreadClosedStatus = async (threadId, isClosed) => {
   try {
@@ -359,7 +351,7 @@ const updateThreadClosedStatus = async (threadId, isClosed) => {
     const request = pool.request();
     request.input('ThreadID', sql.BigInt, threadId);
     request.input('IsClosed', sql.Bit, isClosed);
-    request.input('UpdatedAt', sql.DateTime2, new Date()); // Cập nhật luôn UpdatedAt
+    request.input('UpdatedAt', sql.DateTime2, new Date());
     const result = await request.query(`
             UPDATE DiscussionThreads
             SET IsClosed = @IsClosed, UpdatedAt = @UpdatedAt

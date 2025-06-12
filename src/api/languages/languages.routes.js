@@ -1,4 +1,3 @@
-// src/api/languages/languages.routes.js
 const express = require('express');
 const validate = require('../../middlewares/validation.middleware');
 const languageValidation = require('./languages.validation');
@@ -14,7 +13,7 @@ const router = express.Router();
 // Lấy danh sách ngôn ngữ (Public/Authenticated User)
 router.get(
   '/',
-  validate(languageValidation.getLanguages), // Validation cho query params
+  validate(languageValidation.getLanguages),
   languageController.getLanguages
 );
 
@@ -36,7 +35,6 @@ router.post(
 
 router
   .route('/:languageCode')
-  // .get(...) // Đã định nghĩa ở trên cho public
   .patch(
     validate(languageValidation.updateLanguage),
     languageController.updateLanguage

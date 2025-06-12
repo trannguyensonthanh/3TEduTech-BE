@@ -1,4 +1,4 @@
-const cloudinary = require('../config/cloudinary'); // Lấy instance đã config
+const cloudinary = require('../config/cloudinary');
 const logger = require('./logger');
 
 /**
@@ -10,18 +10,14 @@ const logger = require('./logger');
  */
 const generateSignedVideoUrl = (publicId, options = {}) => {
   try {
-    const expiresIn = options.expiresIn || 3600; // Mặc định 1 giờ
+    const expiresIn = options.expiresIn || 3600;
     const expirationTimestamp = Math.floor(Date.now() / 1000) + expiresIn;
 
     const signedUrl = cloudinary.video(publicId, {
-      // Quan trọng: Các tùy chọn này phải khớp với cách bạn lưu resource
       resource_type: 'video',
       type: 'private',
-      // Tạo chữ ký
       sign_url: true,
       expires_at: expirationTimestamp,
-      // Có thể thêm các transformation khác nếu cần ở đây
-      // transformation: [...]
     });
 
     if (!signedUrl) {
@@ -34,7 +30,6 @@ const generateSignedVideoUrl = (publicId, options = {}) => {
     return signedUrl;
   } catch (error) {
     logger.error(`Error generating signed URL for ${publicId}:`, error);
-    // Ném lại lỗi để Service xử lý
     throw new Error('Không thể tạo đường dẫn xem video.');
   }
 };
@@ -63,39 +58,30 @@ const generateSignedUrl = (publicId, options = {}) => {
   }
 
   const resourceType = options.resource_type || 'video';
-  // Mặc định là 'private' vì mục đích chính của signed URL là bảo vệ tài nguyên
   const deliveryType = options.type || 'private';
-  // Mặc định hết hạn sau 1 giờ (3600 giây)
   const expiresIn = options.expires_in || 3600;
   const expiresAt = Math.floor(Date.now() / 1000) + expiresIn;
 
-  // Các tùy chọn cơ bản cho việc ký URL
   const signOptions = {
     resource_type: resourceType,
     type: deliveryType,
     expires_at: expiresAt,
-    secure: true, // Luôn dùng HTTPS
-    sign_url: true, // Đảm bảo URL được ký (quan trọng khi type không phải private hoặc để chắc chắn)
-    // Thêm transformation mặc định hoặc từ options
-    // Ví dụ transformation mặc định cho video streaming:
+    secure: true,
+    sign_url: true,
     transformation: options.transformation || [
-      { fetch_format: 'auto', quality: 'auto' }, // Định dạng và chất lượng tự động
-      { video_codec: 'auto' }, // Codec video tự động
+      { fetch_format: 'auto', quality: 'auto' },
+      { video_codec: 'auto' },
     ],
-    // Nếu bạn cần các options khác như version, v.v. thì thêm vào đây
   };
 
-  // Loại bỏ transformation nếu resource_type là 'raw' vì thường không áp dụng
   if (resourceType === 'raw') {
     delete signOptions.transformation;
   }
 
   try {
-    // Sử dụng cloudinary.utils.url để tạo URL có thể hiển thị/stream
     const signedUrl = cloudinary.utils.url(publicId, signOptions);
 
     logger.info(
-      // Dùng info hoặc debug tùy mức độ chi tiết bạn muốn
       `Generated signed URL for public_id="${publicId}", resource_type="${resourceType}", type="${deliveryType}". Expires: ${new Date(expiresAt * 1000).toISOString()}`
     );
     return signedUrl;
@@ -104,7 +90,6 @@ const generateSignedUrl = (publicId, options = {}) => {
       `Error generating signed URL for public_id="${publicId}":`,
       error
     );
-    // Throw lại lỗi cụ thể hơn hoặc lỗi gốc
     throw new Error(`Could not generate signed URL: ${error.message || error}`);
   }
 };
@@ -118,15 +103,13 @@ const generateSignedUrl = (publicId, options = {}) => {
 const uploadStream = (buffer, options = {}) => {
   return new Promise((resolve, reject) => {
     const uploadOptions = {
-      resource_type: options.resource_type || 'auto', // 'image', 'video', 'raw', 'auto'
-      folder: options.folder, // Thư mục trên Cloudinary
-      public_id: options.public_id, // Tên file mong muốn (không bao gồm phần mở rộng)
-      overwrite: options.overwrite !== undefined ? options.overwrite : true, // Ghi đè file cũ nếu public_id trùng
-      type: options.type || 'upload', // 'upload', 'private', 'authenticated', 'fetch'
-      // Các options khác nếu cần: transformation, tags,...
+      resource_type: options.resource_type || 'auto',
+      folder: options.folder,
+      public_id: options.public_id,
+      overwrite: options.overwrite !== undefined ? options.overwrite : true,
+      type: options.type || 'upload',
     };
 
-    // Xóa các key có giá trị undefined để tránh lỗi Cloudinary
     Object.keys(uploadOptions).forEach(
       (key) => uploadOptions[key] === undefined && delete uploadOptions[key]
     );
@@ -142,13 +125,12 @@ const uploadStream = (buffer, options = {}) => {
           logger.info(`Cloudinary upload successful: ${result.public_id}`);
           resolve(result);
         } else {
-          // Trường hợp lạ, không có lỗi nhưng cũng không có kết quả
           logger.error('Cloudinary upload did not return a result.');
           reject(new Error('Cloudinary upload failed without specific error.'));
         }
       }
     );
-    stream.end(buffer); // Gửi buffer vào stream
+    stream.end(buffer);
   });
 };
 
@@ -162,7 +144,6 @@ const uploadStream = (buffer, options = {}) => {
  * @throws {Error} Nếu có lỗi trong quá trình xóa.
  */
 const deleteAsset = async (publicId, options = {}) => {
-  // Kiểu trả về 'any' vì result của Cloudinary có thể đa dạng
   if (!cloudinary.config().api_secret || !cloudinary.config().api_key) {
     logger.error(
       'Cloudinary API key or secret is missing. Cannot delete asset.'
@@ -176,7 +157,6 @@ const deleteAsset = async (publicId, options = {}) => {
     throw new Error('Public ID cannot be empty.');
   }
 
-  // Mặc định là 'image' nếu không chỉ định, nhưng 'video' hoặc 'raw' cũng phổ biến
   const resourceType = options.resource_type || 'image';
 
   try {
@@ -184,10 +164,9 @@ const deleteAsset = async (publicId, options = {}) => {
       `Attempting to delete Cloudinary asset: public_id="${publicId}", resource_type="${resourceType}"`
     );
 
-    // cloudinary.uploader.destroy trả về Promise nếu không có callback
     const result = await cloudinary.uploader.destroy(publicId, {
       resource_type: resourceType,
-      invalidate: true, // Thêm invalidate để xóa cache CDN nếu cần (tùy chọn)
+      invalidate: true,
     });
 
     logger.info(
@@ -195,22 +174,19 @@ const deleteAsset = async (publicId, options = {}) => {
       result
     );
 
-    // Kiểm tra kết quả cụ thể nếu cần
     if (result?.result !== 'ok' && result?.result !== 'not found') {
-      // Log một cảnh báo nếu kết quả không phải 'ok' hoặc 'not found'
       logger.warn(
         `Cloudinary delete for ${publicId} returned unexpected result:`,
         result
       );
     }
 
-    return result; // Trả về kết quả từ Cloudinary
+    return result;
   } catch (error) {
     logger.error(
       `Cloudinary delete error for public_id="${publicId}" (${resourceType}):`,
       error
     );
-    // Ném lại lỗi để bên gọi có thể xử lý
     throw new Error(
       `Failed to delete Cloudinary asset: ${error.message || error}`
     );

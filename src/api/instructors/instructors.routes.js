@@ -11,8 +11,9 @@ const {
 const Roles = require('../../core/enums/Roles');
 
 const router = express.Router();
-const reviewValidation = require('../reviews/reviews.validation'); // Thêm validation cho reviews
-const reviewController = require('../reviews/reviews.controller'); // Thêm controller cho reviews
+const reviewValidation = require('../reviews/reviews.validation');
+const reviewController = require('../reviews/reviews.controller');
+
 // --- Public Route ---
 router.get(
   '/:instructorId/profile',
@@ -22,31 +23,28 @@ router.get(
 
 router.get(
   '/',
-  // authenticate, // Mở public hoặc yêu cầu đăng nhập tùy theo yêu cầu
-  validate(instructorValidation.getInstructors), // Sẽ định nghĩa schema này
-  instructorController.getInstructors // Sẽ tạo controller method này
+  validate(instructorValidation.getInstructors),
+  instructorController.getInstructors
 );
 
-// Route mới: Lấy tất cả reviews cho các khóa học của một giảng viên
+// --- Lấy tất cả reviews cho các khóa học của một giảng viên ---
 router.get(
-  '/:instructorId/course-reviews', // Lấy theo instructorId
-  // authenticate, // Xem xét việc yêu cầu đăng nhập
-  // authorize([Roles.INSTRUCTOR, Roles.ADMIN, Roles.SUPERADMIN]), // Ai có quyền xem?
-  validate(reviewValidation.getReviewsByInstructor), // Sẽ tạo schema validation này
-  reviewController.getCourseReviewsByInstructor // Sẽ tạo controller method này
+  '/:instructorId/course-reviews',
+  validate(reviewValidation.getReviewsByInstructor),
+  reviewController.getCourseReviewsByInstructor
 );
 
 // --- Routes require Instructor Role ---
 router.use(authenticate, authorize([Roles.INSTRUCTOR, Roles.SUPERADMIN]));
 
-// Student Management for Instructor
+// --- Student Management for Instructor ---
 router.get(
   '/me/students',
-  validate(instructorValidation.getInstructorStudents), // You will need to create this validation schema
-  instructorController.getMyStudents // You will need to create this controller method
+  validate(instructorValidation.getInstructorStudents),
+  instructorController.getMyStudents
 );
 
-// Profile Management
+// --- Profile Management ---
 router
   .route('/me/profile')
   .get(instructorController.getMyProfile)
@@ -55,7 +53,7 @@ router
     instructorController.updateMyProfile
   );
 
-// Skills Management
+// --- Skills Management ---
 router.post(
   '/me/skills',
   validate(instructorValidation.addSkill),
@@ -67,9 +65,9 @@ router.delete(
   instructorController.removeMySkill
 );
 
-// Social Links Management
+// --- Social Links Management ---
 router.put(
-  '/me/social-links', // Dùng PUT vì nó mang tính chất replace hoặc create
+  '/me/social-links',
   validate(instructorValidation.addOrUpdateSocialLink),
   instructorController.addOrUpdateMySocialLink
 );
@@ -79,25 +77,12 @@ router.delete(
   instructorController.removeMySocialLink
 );
 
-// Bank Info Management
-// router
-//   .route('/me/bank-info')
-//   // .get(authenticate, authorize([Roles.INSTRUCTOR]), instructorController.getMyBankInfo) // Cần controller nếu muốn lấy riêng
-//   .put(
-//     // Dùng PUT vì đây là cập nhật toàn bộ thông tin bank
-//     authenticate,
-//     authorize([Roles.INSTRUCTOR]),
-//     validate(instructorValidation.updateMyBankInfo),
-//     instructorController.updateMyBankInfo
-//   );
-
 // *** Mount Payout Method Routes ***
-router.use('/me/payout-methods', payoutMethodRoutes); // Mount vào /v1/instructors/me/payout-methods
+router.use('/me/payout-methods', payoutMethodRoutes);
 
-// Instructor Dashboard Data / Financial Overview
+// --- Instructor Dashboard Data / Financial Overview ---
 router.get(
-  '/me/financial-overview', // Đổi tên route cho rõ ràng
-  // Không cần validation đặc biệt cho query params ở đây
+  '/me/financial-overview',
   instructorController.getMyFinancialOverview
 );
 

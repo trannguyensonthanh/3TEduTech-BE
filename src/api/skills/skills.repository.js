@@ -3,6 +3,9 @@ const ApiError = require('../../core/errors/ApiError');
 const { getConnection, sql } = require('../../database/connection');
 const logger = require('../../utils/logger');
 
+/**
+ * Tạo skill mới
+ */
 const createSkill = async ({ skillName, description }) => {
   try {
     const pool = await getConnection();
@@ -18,13 +21,15 @@ const createSkill = async ({ skillName, description }) => {
   } catch (error) {
     logger.error('Error creating skill:', error);
     if (error.number === 2627 || error.number === 2601) {
-      // Unique SkillName
       throw new ApiError(httpStatus.BAD_REQUEST, 'Tên kỹ năng đã tồn tại.');
     }
     throw error;
   }
 };
 
+/**
+ * Tìm skill theo ID
+ */
 const findSkillById = async (skillId) => {
   try {
     const pool = await getConnection();
@@ -40,6 +45,9 @@ const findSkillById = async (skillId) => {
   }
 };
 
+/**
+ * Tìm skill theo tên
+ */
 const findSkillByName = async (skillName) => {
   try {
     const pool = await getConnection();
@@ -55,14 +63,15 @@ const findSkillByName = async (skillName) => {
   }
 };
 
-// Hàm tìm kiếm/lấy tất cả skills (có thể phân trang nếu nhiều)
+/**
+ * Tìm kiếm/lấy tất cả skills (có thể phân trang nếu nhiều)
+ */
 const findAllSkills = async ({ searchTerm = '', page = 1, limit = 0 }) => {
-  // limit 0 = get all
   try {
     const pool = await getConnection();
     const request = pool.request();
     let query =
-      'SELECT SkillID, SkillName, Description, CreatedAt, UpdatedAt FROM Skills'; // Chỉ lấy các cột cần thiết
+      'SELECT SkillID, SkillName, Description, CreatedAt, UpdatedAt FROM Skills';
     let countQuery = 'SELECT COUNT(*) as total FROM Skills';
     const whereClauses = [];
 
@@ -95,6 +104,9 @@ const findAllSkills = async ({ searchTerm = '', page = 1, limit = 0 }) => {
   }
 };
 
+/**
+ * Cập nhật skill theo ID
+ */
 const updateSkillById = async (skillId, { skillName, description }) => {
   try {
     const pool = await getConnection();
@@ -123,13 +135,15 @@ const updateSkillById = async (skillId, { skillName, description }) => {
   } catch (error) {
     logger.error(`Error updating skill ${skillId}:`, error);
     if (error.number === 2627 || error.number === 2601) {
-      // Unique SkillName
       throw new ApiError(httpStatus.BAD_REQUEST, 'Tên kỹ năng đã tồn tại.');
     }
     throw error;
   }
 };
 
+/**
+ * Đếm số instructor có skill này
+ */
 const countInstructorsWithSkill = async (skillId) => {
   try {
     const pool = await getConnection();
@@ -145,12 +159,14 @@ const countInstructorsWithSkill = async (skillId) => {
   }
 };
 
+/**
+ * Xóa skill theo ID
+ */
 const deleteSkillById = async (skillId) => {
   try {
     const pool = await getConnection();
     const request = pool.request();
     request.input('SkillID', sql.Int, skillId);
-    // FK InstructorSkills -> Skills là NO ACTION, nên sẽ lỗi nếu có instructor dùng
     const result = await request.query(
       'DELETE FROM Skills WHERE SkillID = @SkillID'
     );
@@ -158,7 +174,6 @@ const deleteSkillById = async (skillId) => {
   } catch (error) {
     logger.error(`Error deleting skill ${skillId}:`, error);
     if (error.number === 547) {
-      // Foreign key constraint violation
       throw new ApiError(
         httpStatus.BAD_REQUEST,
         'Không thể xóa kỹ năng vì đang có giảng viên sử dụng.'
@@ -176,7 +191,6 @@ const deleteSkillById = async (skillId) => {
  */
 const findOrCreateSkill = async (skillName, transaction) => {
   console.log('Finding or creating skill:', skillName);
-  // 1. Thử tìm bằng tên trước (trong transaction để đảm bảo nhất quán)
   const findRequest = transaction.request();
   findRequest.input('SkillName', sql.NVarChar, skillName);
   let result = await findRequest.query(
@@ -185,14 +199,12 @@ const findOrCreateSkill = async (skillName, transaction) => {
   let skill = result.recordset[0];
 
   if (skill) {
-    return skill; // Trả về nếu tìm thấy
+    return skill;
   }
 
-  // 2. Nếu không thấy, tạo mới
   logger.info(`Skill "${skillName}" not found, creating new one.`);
   const createRequest = transaction.request();
   createRequest.input('SkillName', sql.NVarChar, skillName);
-  // Description có thể để NULL khi tạo tự động
   createRequest.input('Description', sql.NVarChar, null);
   result = await createRequest.query(`
     INSERT INTO Skills (SkillName, Description)
@@ -201,7 +213,6 @@ const findOrCreateSkill = async (skillName, transaction) => {
   `);
   [skill] = result.recordset;
   if (!skill) {
-    // Lỗi không mong muốn
     throw new Error(`Failed to create or find skill: ${skillName}`);
   }
   return skill;

@@ -1,5 +1,4 @@
 // File: src/api/currencies/currencies.routes.js
-
 const express = require('express');
 const validate = require('../../middlewares/validation.middleware');
 const currencyValidation = require('./currencies.validation');
@@ -12,7 +11,6 @@ const Roles = require('../../core/enums/Roles');
 
 const router = express.Router();
 
-// Tất cả các route này yêu cầu quyền Admin/SuperAdmin
 router.use(authenticate, authorize([Roles.ADMIN, Roles.SUPERADMIN]));
 
 router

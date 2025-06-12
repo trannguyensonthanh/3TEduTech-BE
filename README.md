@@ -12,7 +12,7 @@ UQ là Ràng buộc duy nhất (Unique Constraint).
 
 IX là Chỉ mục (Index) để tăng tốc truy vấn.
 
-1. Bảng: Roles (Lưu thông tin các vai trò)
+Bảng: Roles (Lưu thông tin các vai trò)
 
 Tên cột Kiểu dữ liệu Ràng buộc/Ghi chú
 RoleID VARCHAR(10) PK, Ví dụ: 'NU', 'GV', 'AD', 'SA' (Không nên tự tăng)
@@ -21,30 +21,30 @@ Description NVARCHAR(500) NULL
 CreatedAt DATETIME2 NOT NULL, DEFAULT GETDATE()/NOW()
 UpdatedAt DATETIME2 NOT NULL, DEFAULT GETDATE()/NOW()
 
-2. Bảng: Accounts (Lưu thông tin đăng nhập và cơ bản)
-   Tên cột Kiểu dữ liệu Ràng buộc/Ghi chú
-   AccountID BIGINT PK, IDENTITY(1,1) / Auto-increment
-   Email VARCHAR(255) NOT NULL, UQ, IX, Nên có check định dạng email
-   HashedPassword VARCHAR(255) NULL (Cho phép null nếu đăng nhập bằng Social)
-   RoleID VARCHAR(10) NOT NULL, FK -> Roles(RoleID)
-   Status VARCHAR(20) NOT NULL, CHECK (Status IN ('ACTIVE', 'INACTIVE', 'BANNED', 'PENDING_VERIFICATION', DEFAULT 'PENDING_VERIFICATION', IX
-   EmailVerificationToken VARCHAR(128) NULL, IX (Lưu hash)
-   EmailVerificationExpires DATETIME2 NULL
-   PasswordResetToken VARCHAR(128) NULL, IX (Lưu hash)
-   PasswordResetExpires DATETIME2 NULL
-   HasSocialLogin BIT NOT NULL, DEFAULT 0
-   CreatedAt DATETIME2 NOT NULL, DEFAULT GETDATE()/NOW()
-   UpdatedAt DATETIME2 NOT NULL, DEFAULT GETDATE()/NOW()
+Bảng: Accounts (Lưu thông tin đăng nhập và cơ bản)
+Tên cột Kiểu dữ liệu Ràng buộc/Ghi chú
+AccountID BIGINT PK, IDENTITY(1,1) / Auto-increment
+Email VARCHAR(255) NOT NULL, UQ, IX, Nên có check định dạng email
+HashedPassword VARCHAR(255) NULL (Cho phép null nếu đăng nhập bằng Social)
+RoleID VARCHAR(10) NOT NULL, FK -> Roles(RoleID)
+Status VARCHAR(20) NOT NULL, CHECK (Status IN ('ACTIVE', 'INACTIVE', 'BANNED', 'PENDING_VERIFICATION', DEFAULT 'PENDING_VERIFICATION', IX
+EmailVerificationToken VARCHAR(128) NULL, IX (Lưu hash)
+EmailVerificationExpires DATETIME2 NULL
+PasswordResetToken VARCHAR(128) NULL, IX (Lưu hash)
+PasswordResetExpires DATETIME2 NULL
+HasSocialLogin BIT NOT NULL, DEFAULT 0
+CreatedAt DATETIME2 NOT NULL, DEFAULT GETDATE()/NOW()
+UpdatedAt DATETIME2 NOT NULL, DEFAULT GETDATE()/NOW()
 
-3. Bảng: AuthMethods (Lưu phương thức đăng nhập, đặc biệt cho Social)
-   Tên cột Kiểu dữ liệu Ràng buộc/Ghi chú
-   AuthMethodID BIGINT PK, Auto-increment
-   AccountID BIGINT NOT NULL, FK -> Accounts(AccountID), IX
-   LoginType VARCHAR(20) NOT NULL, CHECK (LoginType IN ('EMAIL', 'GOOGLE', 'FACEBOOK')), IX
-   ExternalID VARCHAR(255) NULL, IX (ID từ Google/Facebook)
-   PK_UQ UQ (AccountID, LoginType)
+Bảng: AuthMethods (Lưu phương thức đăng nhập, đặc biệt cho Social)
+Tên cột Kiểu dữ liệu Ràng buộc/Ghi chú
+AuthMethodID BIGINT PK, Auto-increment
+AccountID BIGINT NOT NULL, FK -> Accounts(AccountID), IX
+LoginType VARCHAR(20) NOT NULL, CHECK (LoginType IN ('EMAIL', 'GOOGLE', 'FACEBOOK')), IX
+ExternalID VARCHAR(255) NULL, IX (ID từ Google/Facebook)
+PK_UQ UQ (AccountID, LoginType)
 
-4. Bảng: UserProfiles (Thông tin hồ sơ chung cho mọi người dùng)
+Bảng: UserProfiles (Thông tin hồ sơ chung cho mọi người dùng)
 
 Tên cột Kiểu dữ liệu Ràng buộc/Ghi chú
 AccountID BIGINT PK, FK -> Accounts(AccountID)
@@ -58,8 +58,9 @@ Headline NVARCHAR(255) NULL
 Location NVARCHAR(255) NULL
 CreatedAt DATETIME2 NOT NULL, DEFAULT GETDATE()/NOW()
 UpdatedAt DATETIME2 NOT NULL, DEFAULT GETDATE()/NOW()
+AvatarPublicId
 
-5.Bảng: Skills (Góp ý: Tách ra để dễ quản lý và truy vấn)
+Bảng: Skills (Góp ý: Tách ra để dễ quản lý và truy vấn)
 
 Tên cột Kiểu dữ liệu Ràng buộc/Ghi chú
 SkillID INT PK, IDENTITY(1,1)
@@ -68,14 +69,14 @@ Description NVARCHAR(500) NULL
 CreatedAt DATETIME2 NOT NULL, DEFAULT GETDATE()
 UpdatedAt DATETIME2 NOT NULL, DEFAULT GETDATE()
 
-6. Bảng: InstructorSkills (Góp ý: Bảng nối GV-Kỹ năng)
+Bảng: InstructorSkills (Góp ý: Bảng nối GV-Kỹ năng)
 
 Tên cột Kiểu dữ liệu Ràng buộc/Ghi chú
 InstructorSkillID BIGINT PK, IDENTITY(1,1)
 AccountID BIGINT NOT NULL, FK -> Accounts(AccountID) ON DELETE NO ACTION,  UQ (AccountID, SkillID)
 SkillID INT NOT NULL, FK -> Skills(SkillID) ON DELETE NO ACTION, UQ (AccountID, SkillID)
 
-7. Bảng: InstructorProfiles (Thông tin riêng của Giảng viên)
+Bảng: InstructorProfiles (Thông tin riêng của Giảng viên)
 
 Tên cột Kiểu dữ liệu Ràng buộc/Ghi chú
 AccountID BIGINT PK, FK -> Accounts(AccountID) ON DELETE CASCADE
@@ -86,7 +87,7 @@ LastBalanceUpdate DATETIME2 NULL
 CreatedAt DATETIME2 NOT NULL, DEFAULT GETDATE()/NOW()
 UpdatedAt DATETIME2 NOT NULL, DEFAULT GETDATE()/NOW()
 
-8. Bảng: InstructorSocialLinks (Góp ý: Tách ra)
+Bảng: InstructorSocialLinks (Góp ý: Tách ra)
 
 Tên cột Kiểu dữ liệu Ràng buộc/Ghi chú
 SocialLinkID BIGINT PK, IDENTITY(1,1)
@@ -102,7 +103,7 @@ AccountID BIGINT NOT NULL UNIQUE, FK -> Accounts(AccountID) ON DELETE CASCADE
 CreatedAt DATETIME2 NOT NULL DEFAULT GETDATE(),
 UpdatedAt DATETIME2 NOT NULL DEFAULT GETDATE(),
 
-10. Bảng: CartItems (Các mục trong Giỏ hàng) - Bảng mới
+Bảng: CartItems (Các mục trong Giỏ hàng) - Bảng mới
 
 Tên cột Kiểu dữ liệu Ràng buộc/Ghi chú
 CartItemID BIGINT IDENTITY(1,1) PRIMARY KEY
@@ -112,8 +113,7 @@ PriceAtAddition DECIMAL(18, 4) NOT NULL, Giá khóa học tại thời điểm t
 AddedAt DATETIME2 NOT NULL DEFAULT GETDATE()
 (Constraint) UQ_CartItem_Cart_Course: UNIQUE (CartID, CourseID) - Mỗi khóa học chỉ xuất hiện 1 lần trong 1 giỏ hàng
 
-11. Bảng: Categories(Danh mục khóa học)
-
+Bảng: Categories(Danh mục khóa học)
 Tên cột Kiểu dữ liệu Ràng buộc/Ghi chú
 CategoryID INT PK, IDENTITY(1,1)
 CategoryName NVARCHAR(150) NOT NULL, UQ
@@ -123,7 +123,7 @@ IconUrl VARCHAR(500) NULL
 CreatedAt DATETIME2 NOT NULL, DEFAULT GETDATE()
 UpdatedAt DATETIME2 NOT NULL, DEFAULT GETDATE()
 
-12. Bảng: Levels (Cấp độ khóa học)
+Bảng: Levels (Cấp độ khóa học)
 
 Tên cột Kiểu dữ liệu Ràng buộc/Ghi chú
 LevelID INT PK, IDENTITY(1,1)
@@ -131,14 +131,14 @@ LevelName NVARCHAR(100) NOT NULL, UQ
 CreatedAt DATETIME2 NOT NULL, DEFAULT GETDATE()
 UpdatedAt DATETIME2 NOT NULL, DEFAULT GETDATE()
 
-13. Bảng: CourseStatuses (Trạng thái khóa học)
+Bảng: CourseStatuses (Trạng thái khóa học)
 
 Tên cột Kiểu dữ liệu Ràng buộc/Ghi chú
 StatusID VARCHAR(20) PK, Ví dụ: 'DRAFT', 'PENDING', 'PUBLISHED', 'REJECTED'
 StatusName NVARCHAR(100) NOT NULL
 Description NVARCHAR(255) NULL
 
-14. Bảng: Courses (Khóa học)
+Bảng: Courses (Khóa học)
 
 Tên cột Kiểu dữ liệu Ràng buộc/Ghi chú
 CourseID BIGINT PK, IDENTITY(1,1)
@@ -167,7 +167,7 @@ IntroVideoPublicId VARCHAR(255) NULL
 AverageRating DECIMAL(3, 2) NULL
 ReviewCount INT NULL
 
-15. Bảng: Sections (Chương của khóa học)
+Bảng: Sections (Chương của khóa học)
 
 Tên cột Kiểu dữ liệu Ràng buộc/Ghi chú
 SectionID BIGINT PK, IDENTITY(1,1)
@@ -179,23 +179,23 @@ OriginalID BIGINT NULL, FK -> Sections(SectionID), IX (WHERE OriginalID IS N
 CreatedAt DATETIME2 NOT NULL, DEFAULT GETDATE()
 UpdatedAt DATETIME2 NOT NULL, DEFAULT GETDATE()
 
-12. Bảng: Lessons (Bài học trong chương)
-    Tên cột Kiểu dữ liệu Ràng buộc/Ghi chú
-    LessonID BIGINT PK, IDENTITY(1,1)
-    SectionID BIGINT NOT NULL, FK -> Sections(SectionID) ON DELETE CASCADE, IX
-    LessonName NVARCHAR(255) NOT NULL
-    Description NVARCHAR(MAX) NULL
-    LessonOrder INT NOT NULL, DEFAULT 0, IX (SectionID, LessonOrder)
-    LessonType VARCHAR(20) NOT NULL CHECK (LessonType IN ('VIDEO', 'TEXT', 'QUIZ'))
-    VideoSourceType VARCHAR(20) NULL
-    ExternalVideoID VARCHAR(255) NULL
-    ThumbnailUrl VARCHAR(500) NULL
-    VideoDurationSeconds INT NULL, CHECK (VideoDurationSeconds >= 0)
-    TextContent NVARCHAR(MAX) NULL
-    IsFreePreview BIT NOT NULL, DEFAULT 0
-    OriginalID BIGINT NULL, FK -> Lessons(LessonID), IX (WHERE OriginalID IS NOT NULL)
-    CreatedAt DATETIME2 NOT NULL, DEFAULT GETDATE()
-    UpdatedAt DATETIME2 NOT NULL, DEFAULT GETDATE()
+Bảng: Lessons (Bài học trong chương)
+Tên cột Kiểu dữ liệu Ràng buộc/Ghi chú
+LessonID BIGINT PK, IDENTITY(1,1)
+SectionID BIGINT NOT NULL, FK -> Sections(SectionID) ON DELETE CASCADE, IX
+LessonName NVARCHAR(255) NOT NULL
+Description NVARCHAR(MAX) NULL
+LessonOrder INT NOT NULL, DEFAULT 0, IX (SectionID, LessonOrder)
+LessonType VARCHAR(20) NOT NULL CHECK (LessonType IN ('VIDEO', 'TEXT', 'QUIZ'))
+VideoSourceType VARCHAR(20) NULL
+ExternalVideoID VARCHAR(255) NULL
+ThumbnailUrl VARCHAR(500) NULL
+VideoDurationSeconds INT NULL, CHECK (VideoDurationSeconds >= 0)
+TextContent NVARCHAR(MAX) NULL
+IsFreePreview BIT NOT NULL, DEFAULT 0
+OriginalID BIGINT NULL, FK -> Lessons(LessonID), IX (WHERE OriginalID IS NOT NULL)
+CreatedAt DATETIME2 NOT NULL, DEFAULT GETDATE()
+UpdatedAt DATETIME2 NOT NULL, DEFAULT GETDATE()
 
 Bảng: LessonSubtitles (Phụ đề cho Bài học)
 
@@ -219,7 +219,7 @@ UpdatedAt DATETIME2 NOT NULL DEFAULT GETDATE()
 
 INDEX IX_Lessons_SectionID_Order (SectionID, LessonOrder)
 
-17. Bảng: LessonAttachments 
+Bảng: LessonAttachments 
 
 Tên cột Kiểu dữ liệu Ràng buộc/Ghi chú
 AttachmentID INT IDENTITY(1,1) PRIMARY KEY
@@ -231,7 +231,7 @@ FileSize BIGINT NULL, Kích thước file (bytes)
 CloudStorageID VARCHAR(255) NULL, ID trên cloud storage (dùng để xóa file gốc)
 UploadedAt DATETIME2 DEFAULT GETDATE()
 
-18. Bảng: QuizQuestions (Câu hỏi trong một bài học Quiz)
+Bảng: QuizQuestions (Câu hỏi trong một bài học Quiz)
 
 Tên cột Kiểu dữ liệu Ràng buộc/Ghi chú
 QuestionID INT IDENTITY(1,1) PRIMARY KEY
@@ -242,7 +242,7 @@ QuestionOrder INT NOT NULL DEFAULT 0, Thứ tự câu hỏi, Part of INDEX (IX_Q
 CreatedAt DATETIME2 NOT NULL DEFAULT GETDATE()
 UpdatedAt DATETIME2 NOT NULL DEFAULT GETDATE()
 
-19. Bảng: QuizOptions
+Bảng: QuizOptions
 
 Tên cột Kiểu dữ liệu Ràng buộc/Ghi chú
 OptionID BIGINT IDENTITY(1,1) PRIMARY KEY
@@ -251,7 +251,7 @@ OptionText NVARCHAR(MAX) NOT NULL, Nội dung của lựa chọn
 IsCorrectAnswer BIT NOT NULL DEFAULT 0, Cờ đánh dấu đây là đáp án đúng
 OptionOrder INT NOT NULL DEFAULT 0, Thứ tự hiển thị lựa chọn (A, B, C, D...)
 
-20.  Bảng: QuizAttempts (Lượt làm Quiz của Học viên)
+ Bảng: QuizAttempts (Lượt làm Quiz của Học viên)
 
 Tên cột Kiểu dữ liệu Ràng buộc/Ghi chú
 AttemptID BIGINT IDENTITY(1,1) PRIMARY KEY
@@ -263,7 +263,7 @@ Score DECIMAL(5, 2) NULL, Điểm số (ví dụ: %, hoặc tổng điểm)
 IsPassed BIT NULL, Đạt hay không (tùy theo ngưỡng)
 AttemptNumber INT NULL, cho phép làm lại nhiều lần Unique(LessonID, AccountID, AttemptNumber).
 
-21. Bảng: QuizAttemptAnswers (Câu trả lời chi tiết cho mỗi lượt làm Quiz)
+Bảng: QuizAttemptAnswers (Câu trả lời chi tiết cho mỗi lượt làm Quiz)
 
 Tên cột Kiểu dữ liệu Ràng buộc/Ghi chú
 AttemptAnswerID BIGINT IDENTITY(1,1) PRIMARY KEY
@@ -272,7 +272,7 @@ QuestionID INT NOT NULL, FK -> QuizQuestions(QuestionID) (Không CASCADE DELETE)
 SelectedOptionID BIGINT NULL, FK -> QuizOptions(OptionID) (Không CASCADE DELETE), Lựa chọn được học viên chọn
 IsCorrect BIT NULL, Kết quả đúng/sai (nên tính toán khi chấm)
 
-22. Bảng: Enrollments (Đăng ký khóa học)
+Bảng: Enrollments (Đăng ký khóa học)
 
 Tên cột Kiểu dữ liệu Ràng buộc/Ghi chú
 EnrollmentID BIGINT PK, IDENTITY(1,1)
@@ -282,7 +282,7 @@ EnrolledAt DATETIME2 NOT NULL, DEFAULT GETDATE()
 PurchasePrice DECIMAL(18, 4) NOT NULL, CHECK (PurchasePrice >= 0)
 Tên cột Kiểu dữ liệu Ràng buộc/Ghi chú
 
-23. Bảng: LessonProgress (Tiến độ bài học)
+Bảng: LessonProgress (Tiến độ bài học)
 
 Tên cột Kiểu dữ liệu Ràng buộc/Ghi chú
 ProgressID BIGINT PK, IDENTITY(1,1)
@@ -293,7 +293,7 @@ CompletedAt DATETIME2 NULL
 LastWatchedPosition INT NULL, CHECK (LastWatchedPosition >= 0)
 LastWatchedAt DATETIME2 NULL, DEFAULT GETDATE()
 
-24. Bảng: CourseReviews (Đánh giá khóa học)
+Bảng: CourseReviews (Đánh giá khóa học)
 
 Tên cột Kiểu dữ liệu Ràng buộc/Ghi chú
 ReviewID BIGINT PK, IDENTITY(1,1)
@@ -303,7 +303,7 @@ Rating TINYINT NOT NULL, CHECK (Rating BETWEEN 1 AND 5)
 Comment NTEXT NULL
 ReviewedAt DATETIME2 NOT NULL, DEFAULT GETDATE()
 
-25. Bảng: Currencies (Loại tiền tệ)
+Bảng: Currencies (Loại tiền tệ)
 
 Tên cột Kiểu dữ liệu Ràng buộc/Ghi chú
 CurrencyID VARCHAR(10) PK, NOT NULL, Ví dụ: 'VND', 'USD', 'USDT'
@@ -311,7 +311,7 @@ CurrencyName NVARCHAR(100) NOT NULL
 Type VARCHAR(10) NOT NULL, CHECK (Type IN ('FIAT', 'CRYPTO'))
 DecimalPlaces TINYINT NOT NULL, CHECK (DecimalPlaces >= 0)
 
-26. Bảng: PaymentMethods (Phương thức thanh toán)
+Bảng: PaymentMethods (Phương thức thanh toán)
 
 Tên cột Kiểu dữ liệu Ràng buộc/Ghi chú
 MethodID VARCHAR(20) PK, NOT NULL, Ví dụ: 'MOMO', 'VNPAY', 'CRYPTO', 'BANK'
@@ -319,13 +319,13 @@ MethodName NVARCHAR(100) NOT NULL
 IconUrl
 Description
 
-27. Bảng: PaymentStatuses (Trạng thái thanh toán)
+Bảng: PaymentStatuses (Trạng thái thanh toán)
 
 Tên cột Kiểu dữ liệu Ràng buộc/Ghi chú
 StatusID VARCHAR(20) PK, Ví dụ: 'PENDING', 'SUCCESS', 'FAILED', 'CANCELLED'
 StatusName NVARCHAR(100) NOT NULL
 
-28. Bảng: Promotions (Khuyến mãi)
+Bảng: Promotions (Khuyến mãi)
 
 Tên cột Kiểu dữ liệu Ràng buộc/Ghi chú
 PromotionID INT PK, IDENTITY(1,1)
@@ -344,7 +344,7 @@ Status VARCHAR(20) NOT NULL, DEFAULT 'INACTIVE', IX, CHECK (Status IN ('ACTIVE'
 CreatedAt DATETIME2 NOT NULL, DEFAULT GETDATE()
 UpdatedAt DATETIME2 NOT NULL, DEFAULT GETDATE()
 
-29.  Bảng: Orders (Đơn hàng - cho Giỏ hàng)
+ Bảng: Orders (Đơn hàng - cho Giỏ hàng)
 
 Tên cột Kiểu dữ liệu Ràng buộc/Ghi chú
 OrderID BIGINT IDENTITY(1,1) PRIMARY KEY
@@ -356,8 +356,9 @@ FinalAmount DECIMAL(18, 4) NOT NULL, Số tiền cuối cùng cần thanh toán
 PromotionID INT NULL, FK -> Promotions(PromotionID) ON DELETE SET NULL
 PaymentID BIGINT NULL, UNIQUE, FK -> CoursePayments(PaymentID) ON DELETE SET NULL (Thêm sau khi tạo CoursePayments)
 OrderStatus VARCHAR(30) NOT NULL DEFAULT 'PENDING_PAYMENT', ('PENDING_PAYMENT', 'COMPLETED', 'FAILED', 'CANCELLED'), Part of INDEX (IX_Orders_AccountID_Status)
+CurrencyID CurrencyID khóa ngoại của
 
-29. OrderItems (Chi tiết Đơn hàng)
+OrderItems (Chi tiết Đơn hàng)
 
 Tên cột Kiểu dữ liệu Ràng buộc/Ghi chú
 OrderItemID BIGINT IDENTITY(1,1) PRIMARY KEY
@@ -367,7 +368,7 @@ PriceAtOrder DECIMAL(18, 4) NOT NULL, Giá khóa học tại thời điểm đ�
 EnrollmentID BIGINT NULL, UNIQUE, FK -> Enrollments(EnrollmentID) ON DELETE SET NULL (Liên kết sau khi hoàn thành đơn hàng)
 (Constraint) UQ_OrderItem_Order_Course: UNIQUE (OrderID, CourseID) - Mỗi khóa học chỉ xuất hiện 1 lần trong 1 đơn hàng
 
-30. Bảng: ExchangeRates (Góp ý: Cần thiết cho đa tiền tệ)
+Bảng: ExchangeRates (Góp ý: Cần thiết cho đa tiền tệ)
 
 Tên cột Kiểu dữ liệu Ràng buộc/Ghi chú
 RateID BIGINT PK, IDENTITY(1,1)
@@ -377,26 +378,26 @@ Rate DECIMAL(36, 18) NOT NULL, CHECK (Rate > 0)
 EffectiveTimestamp DATETIME2 NOT NULL, DEFAULT GETDATE(), IX (FromCurrencyID, ToCurrencyID, EffectiveTimestamp DESC)
 Source NVARCHAR(100) NULL
 
-31. Bảng: CoursePayments (Giao dịch thanh toán khóa học)
-    Tên cột Kiểu dữ liệu Ràng buộc/Ghi chú
-    PaymentID BIGINT IDENTITY(1,1) PRIMARY KEY
-    OrderID BIGINT NOT NULL, UNIQUE, FK -> Orders(OrderID), INDEXED (IX_CoursePayments_OrderID)
-    FinalAmount DECIMAL(18, 4) NOT NULL, Số tiền thực trả cho cả Order
-    PaymentMethodID VARCHAR(20) NOT NULL, FK -> PaymentMethods(MethodID)
-    OriginalCurrencyID VARCHAR(10) NOT NULL, FK -> Currencies(CurrencyID)
-    OriginalAmount DECIMAL(36, 18) NOT NULL
-    ExternalTransactionID VARCHAR(255) NULL, INDEXED (IX_CoursePayments_ExternalTransactionID) WHERE ExternalTransactionID IS NOT NULL
-    ConvertedCurrencyID VARCHAR(10) NOT NULL, FK -> Currencies(CurrencyID)
-    ConversionRate DECIMAL(24, 12) NULL
-    ConvertedTotalAmount DECIMAL(18, 4) NOT NULL
-    TransactionFee DECIMAL(18, 4) NOT NULL DEFAULT 0
-    PaymentStatusID VARCHAR(20) NOT NULL DEFAULT 'PENDING', FK -> PaymentStatuses(StatusID), INDEXED (IX_CoursePayments_StatusID)
-    TransactionCompletedAt DATETIME2 NULL
-    AdditionalInfo NVARCHAR(MAX) NULL
-    CreatedAt DATETIME2 NOT NULL DEFAULT GETDATE()
-    UpdatedAt DATETIME2 NOT NULL DEFAULT GETDATE()
+Bảng: CoursePayments (Giao dịch thanh toán khóa học)
+Tên cột Kiểu dữ liệu Ràng buộc/Ghi chú
+PaymentID BIGINT IDENTITY(1,1) PRIMARY KEY
+OrderID BIGINT NOT NULL, UNIQUE, FK -> Orders(OrderID), INDEXED (IX_CoursePayments_OrderID)
+FinalAmount DECIMAL(18, 4) NOT NULL, Số tiền thực trả cho cả Order
+PaymentMethodID VARCHAR(20) NOT NULL, FK -> PaymentMethods(MethodID)
+OriginalCurrencyID VARCHAR(10) NOT NULL, FK -> Currencies(CurrencyID)
+OriginalAmount DECIMAL(36, 18) NOT NULL
+ExternalTransactionID VARCHAR(255) NULL, INDEXED (IX_CoursePayments_ExternalTransactionID) WHERE ExternalTransactionID IS NOT NULL
+ConvertedCurrencyID VARCHAR(10) NOT NULL, FK -> Currencies(CurrencyID)
+ConversionRate DECIMAL(24, 12) NULL
+ConvertedTotalAmount DECIMAL(18, 4) NOT NULL
+TransactionFee DECIMAL(18, 4) NOT NULL DEFAULT 0
+PaymentStatusID VARCHAR(20) NOT NULL DEFAULT 'PENDING', FK -> PaymentStatuses(StatusID), INDEXED (IX_CoursePayments_StatusID)
+TransactionCompletedAt DATETIME2 NULL
+AdditionalInfo NVARCHAR(MAX) NULL
+CreatedAt DATETIME2 NOT NULL DEFAULT GETDATE()
+UpdatedAt DATETIME2 NOT NULL DEFAULT GETDATE()
 
-32. Bảng: WithdrawalRequests (Yêu cầu rút tiền)
+Bảng: WithdrawalRequests (Yêu cầu rút tiền)
 
 Tên cột Kiểu dữ liệu Ràng buộc/Ghi chú
 RequestID BIGINT PK, IDENTITY(1,1)
@@ -414,47 +415,47 @@ PayoutID BIGINT NULL, FK -> Payouts(PayoutID) ON DELETE SET NULL, IX
 CreatedAt DATETIME2 NOT NULL, DEFAULT GETDATE()
 UpdatedAt DATETIME2 NOT NULL, DEFAULT GETDATE()
 
-34. Bảng: PayoutStatuses (Trạng thái chi trả)
+Bảng: PayoutStatuses (Trạng thái chi trả)
 
 Tên cột Kiểu dữ liệu Ràng buộc/Ghi chú
 StatusID VARCHAR(20) PK, Ví dụ: 'PENDING', 'PROCESSING', 'PAID', 'FAILED'
 StatusName NVARCHAR(100) NOT NULL
 
-35. Bảng: Payouts (Lịch sử chi trả thực tế)
-    Tên cột Kiểu dữ liệu Ràng buộc/Ghi chú
-    PayoutID BIGINT PK, IDENTITY(1,1)
-    InstructorID BIGINT NOT NULL, FK -> Accounts(AccountID), IX
-    Amount DECIMAL(18, 4) NOT NULL
-    CurrencyID VARCHAR(10) NOT NULL, FK -> Currencies(CurrencyID)
-    ActualAmount DECIMAL(36, 18) NULL
-    ExchangeRate DECIMAL(24, 12) NULL
-    PaymentMethodID VARCHAR(20) NOT NULL, FK -> PaymentMethods(MethodID)
-    PayoutDetails NVARCHAR(MAX) NULL
-    Fee DECIMAL(18, 4) NOT NULL, DEFAULT 0.0000
-    PayoutStatusID VARCHAR(20) NOT NULL, DEFAULT 'PENDING', FK -> PayoutStatuses(StatusID), IX
-    RequestedAt DATETIME2 NOT NULL, DEFAULT GETDATE()
-    ProcessedAt DATETIME2 NULL
-    CompletedAt DATETIME2 NULL
-    AdminID BIGINT NULL, FK -> Accounts(AccountID)
-    AdminNote NVARCHAR(1000) NULL
-    CreatedAt DATETIME2 NOT NULL, DEFAULT GETDATE()
-    UpdatedAt DATETIME2 NOT NULL, DEFAULT GETDATE()
+Bảng: Payouts (Lịch sử chi trả thực tế)
+Tên cột Kiểu dữ liệu Ràng buộc/Ghi chú
+PayoutID BIGINT PK, IDENTITY(1,1)
+InstructorID BIGINT NOT NULL, FK -> Accounts(AccountID), IX
+Amount DECIMAL(18, 4) NOT NULL
+CurrencyID VARCHAR(10) NOT NULL, FK -> Currencies(CurrencyID)
+ActualAmount DECIMAL(36, 18) NULL
+ExchangeRate DECIMAL(24, 12) NULL
+PaymentMethodID VARCHAR(20) NOT NULL, FK -> PaymentMethods(MethodID)
+PayoutDetails NVARCHAR(MAX) NULL
+Fee DECIMAL(18, 4) NOT NULL, DEFAULT 0.0000
+PayoutStatusID VARCHAR(20) NOT NULL, DEFAULT 'PENDING', FK -> PayoutStatuses(StatusID), IX
+RequestedAt DATETIME2 NOT NULL, DEFAULT GETDATE()
+ProcessedAt DATETIME2 NULL
+CompletedAt DATETIME2 NULL
+AdminID BIGINT NULL, FK -> Accounts(AccountID)
+AdminNote NVARCHAR(1000) NULL
+CreatedAt DATETIME2 NOT NULL, DEFAULT GETDATE()
+UpdatedAt DATETIME2 NOT NULL, DEFAULT GETDATE()
 
-36. Bảng: CourseApprovalRequests (Yêu cầu phê duyệt khóa học)
-    Tên cột Kiểu dữ liệu Ràng buộc/Ghi chú
-    RequestID BIGINT PK, IDENTITY(1,1)
-    CourseID BIGINT NOT NULL, FK -> Courses(CourseID) ON DELETE CASCADE, IX
-    InstructorID BIGINT NOT NULL, FK -> Accounts(AccountID), IX
-    RequestType VARCHAR(30) NOT NULL, CHECK (RequestType IN ('UPDATE_SUBMISSION', ...))
-    Status VARCHAR(20) NOT NULL, DEFAULT 'PENDING', IX, CHECK (Status IN ('PENDING', 'APPROVED', ...))
-    InstructorNotes NTEXT NULL
-    AdminID BIGINT NULL, FK -> Accounts(AccountID)
-    AdminNotes NTEXT NULL
-    ReviewedAt DATETIME2 NULL
-    CreatedAt DATETIME2 NOT NULL, DEFAULT GETDATE()
-    UpdatedAt DATETIME2 NOT NULL, DEFAULT GETDATE()
+Bảng: CourseApprovalRequests (Yêu cầu phê duyệt khóa học)
+Tên cột Kiểu dữ liệu Ràng buộc/Ghi chú
+RequestID BIGINT PK, IDENTITY(1,1)
+CourseID BIGINT NOT NULL, FK -> Courses(CourseID) ON DELETE CASCADE, IX
+InstructorID BIGINT NOT NULL, FK -> Accounts(AccountID), IX
+RequestType VARCHAR(30) NOT NULL, CHECK (RequestType IN ('UPDATE_SUBMISSION', ...))
+Status VARCHAR(20) NOT NULL, DEFAULT 'PENDING', IX, CHECK (Status IN ('PENDING', 'APPROVED', ...))
+InstructorNotes NTEXT NULL
+AdminID BIGINT NULL, FK -> Accounts(AccountID)
+AdminNotes NTEXT NULL
+ReviewedAt DATETIME2 NULL
+CreatedAt DATETIME2 NOT NULL, DEFAULT GETDATE()
+UpdatedAt DATETIME2 NOT NULL, DEFAULT GETDATE()
 
-37. Bảng: Notifications (Góp ý: Thêm mới)
+Bảng: Notifications 
 
 Tên cột Kiểu dữ liệu Ràng buộc/Ghi chú
 NotificationID BIGINT PK, IDENTITY(1,1)
@@ -466,8 +467,7 @@ RelatedEntityID VARCHAR(255) NULL
 IsRead BIT NOT NULL, DEFAULT 0, IX (RecipientAccountID, IsRead, CreatedAt DESC)
 CreatedAt DATETIME2 NOT NULL, DEFAULT GETDATE()
 
-38. Bảng: Settings (Góp ý: Thêm mới)
-
+Bảng: Settings
 Tên cột Kiểu dữ liệu Ràng buộc/Ghi chú
 SettingKey VARCHAR(100) PK, NOT NULL, Ví dụ: 'PlatformCommissionRate'
 SettingValue NVARCHAR(MAX) NOT NULL
@@ -475,7 +475,7 @@ Description NVARCHAR(500) NULL
 IsEditableByAdmin BIT NOT NULL, DEFAULT 1
 LastUpdated DATETIME2 NOT NULL, DEFAULT GETDATE()
 
-39. Bảng: DiscussionThreads (Chủ đề thảo luận/Câu hỏi gốc)
+Bảng: DiscussionThreads (Chủ đề thảo luận/Câu hỏi gốc)
 
 Tên cột Kiểu dữ liệu Ràng buộc/Ghi chú
 ThreadID BIGINT IDENTITY(1,1) PRIMARY KEY
@@ -485,8 +485,11 @@ Title NVARCHAR(500) NOT NULL, Tiêu đề chủ đề/câu hỏi
 CreatedByAccountID BIGINT NOT NULL, FK -> Accounts(AccountID), INDEXED (IX_DiscussionThreads_CreatedBy)
 CreatedAt DATETIME2 NOT NULL DEFAULT GETDATE()
 UpdatedAt DATETIME2 NOT NULL DEFAULT GETDATE()
+IsClosed BIT NOT NULL (0,1)
+LastReplierAccountID BIGINT NULL
+LastReplyAt DATETIME2 NULL
 
-40.  Bảng: DiscussionPosts (Bài viết/Trả lời trong một chủ đề)
+ Bảng: DiscussionPosts (Bài viết/Trả lời trong một chủ đề)
 
 Tên cột Kiểu dữ liệu Ràng buộc/Ghi chú
 PostID BIGINT IDENTITY(1,1) PRIMARY KEY
@@ -498,7 +501,7 @@ IsInstructorPost BIT NOT NULL DEFAULT 0, Đánh dấu nếu do Giảng viên đ�
 CreatedAt DATETIME2 NOT NULL DEFAULT GETDATE(), Part of INDEX (IX_DiscussionPosts_ThreadCreatedAt)
 UpdatedAt DATETIME2 NOT NULL DEFAULT GETDATE()
 
-41. Bảng: InstructorBalanceTransactions (Lịch sử Giao dịch Số dư Giảng viên)
+Bảng: InstructorBalanceTransactions (Lịch sử Giao dịch Số dư Giảng viên)
 
 Tên cột Kiểu dữ liệu Ràng buộc/Ghi chú
 TransactionID BIGINT IDENTITY(1,1) PRIMARY KEY
@@ -512,8 +515,9 @@ RelatedEntityID BIGINT NULL, ID của bản ghi liên quan
 Description NVARCHAR(500) NULL, Mô tả thêm (tùy chọn)
 TransactionTimestamp DATETIME2 NOT NULL DEFAULT GETDATE(), Thời điểm giao dịch
 PaymentID FK -> Payment
+OrderItemID FK -> OrderItemID
 
-42. InstructorPayoutMethods 
+InstructorPayoutMethods 
 
 Tên cột Kiểu dữ liệu Ràng buộc/Ghi chú
 PayoutMethodID BIGINT IDENTITY(1,1) PRIMARY KEY
@@ -525,6 +529,8 @@ Status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE', CHECK (Status IN ('ACTIVE', 'INACT
 CreatedAt DATETIME2 NOT NULL DEFAULT GETDATE()
 UpdatedAt DATETIME2 NOT NULL DEFAULT GETDATE()
 (Constraint) UQ_InstructorPayoutMethod_Account_Method: UNIQUE (AccountID, MethodID) - Mỗi GV chỉ có 1 cấu hình cho mỗi loại phương thức
+
+\_Account_Method: UNIQUE (AccountID, MethodID) - Mỗi GV chỉ có 1 cấu hình cho mỗi loại phương thức
 
 # Thông tin thẻ Ghi chú
 

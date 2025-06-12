@@ -7,6 +7,9 @@ const WithdrawalStatus = require('../../core/enums/WithdrawalStatus');
 
 // === Withdrawal Requests ===
 
+/**
+ * Tạo yêu cầu rút tiền mới.
+ */
 const createWithdrawalRequest = async (requestData) => {
   try {
     const pool = await getConnection();
@@ -27,7 +30,7 @@ const createWithdrawalRequest = async (requestData) => {
       'PayoutDetailsSnapshot',
       sql.NVarChar,
       requestData.PayoutDetailsSnapshot
-    ); // JSON string or text
+    );
     request.input('Status', sql.VarChar, requestData.Status || 'PENDING');
     request.input('InstructorNotes', sql.NVarChar, requestData.InstructorNotes);
 
@@ -49,12 +52,14 @@ const createWithdrawalRequest = async (requestData) => {
   }
 };
 
+/**
+ * Tìm yêu cầu rút tiền theo ID.
+ */
 const findWithdrawalRequestById = async (requestId) => {
   try {
     const pool = await getConnection();
     const request = pool.request();
     request.input('RequestID', sql.BigInt, requestId);
-    // Join để lấy thông tin instructor
     const result = await request.query(`
             SELECT wr.*, up.FullName as InstructorName, acc.Email as InstructorEmail
             FROM WithdrawalRequests wr
@@ -69,6 +74,9 @@ const findWithdrawalRequestById = async (requestId) => {
   }
 };
 
+/**
+ * Cập nhật trạng thái yêu cầu rút tiền.
+ */
 const updateWithdrawalRequestStatus = async (
   requestId,
   updateData,
@@ -120,16 +128,105 @@ const updateWithdrawalRequestStatus = async (
   }
 };
 
+/**
+ * Lấy danh sách các yêu cầu rút tiền với bộ lọc, phân trang và sắp xếp.
+ */
+const findWithdrawalRequests = async (filters = {}, options = {}) => {
+  const { status, instructorId } = filters;
+  const { page = 1, limit = 10, sortBy = 'createdAt:desc' } = options;
+  const offset = (page - 1) * limit;
+
+  try {
+    const pool = await getConnection();
+    const request = pool.request();
+
+    const whereClauses = [];
+    if (status) {
+      request.input('Status', sql.VarChar, status);
+      whereClauses.push('wr.Status = @Status');
+    }
+    if (instructorId) {
+      request.input('InstructorID', sql.BigInt, instructorId);
+      whereClauses.push('wr.InstructorID = @InstructorID');
+    }
+
+    const whereCondition =
+      whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
+
+    const commonQuery = `
+        FROM WithdrawalRequests wr
+        JOIN UserProfiles up ON wr.InstructorID = up.AccountID
+        LEFT JOIN PaymentMethods pm ON wr.PaymentMethodID = pm.MethodID
+        LEFT JOIN UserProfiles admin_up ON wr.AdminID = admin_up.AccountID 
+        ${whereCondition}
+    `;
+
+    const countResult = await request.query(
+      `SELECT COUNT(wr.RequestID) as total ${commonQuery}`
+    );
+    const { total } = countResult.recordset[0];
+
+    let orderByClause = 'ORDER BY wr.CreatedAt DESC';
+    if (sortBy) {
+      const [field, order] = sortBy.split(':');
+      const sortOrder = order?.toLowerCase() === 'asc' ? 'ASC' : 'DESC';
+      const allowedSortFields = {
+        createdAt: 'wr.CreatedAt',
+        processedAt: 'wr.ProcessedAt',
+        requestedAmount: 'wr.RequestedAmount',
+        instructorName: 'up.FullName',
+      };
+      if (allowedSortFields[field]) {
+        orderByClause = `ORDER BY ${allowedSortFields[field]} ${sortOrder}`;
+      }
+    }
+
+    request.input('Limit', sql.Int, limit);
+    request.input('Offset', sql.Int, offset);
+
+    const dataResult = await request.query(`
+        SELECT
+            wr.RequestID,
+            wr.InstructorID,
+            wr.RequestedAmount,
+            wr.RequestedCurrencyID,
+            wr.PaymentMethodID,
+            wr.PayoutDetailsSnapshot,
+            wr.Status,
+            wr.InstructorNotes,
+            wr.AdminID,
+            wr.AdminNotes,
+            wr.ProcessedAt,
+            wr.PayoutID,
+            wr.CreatedAt,
+            wr.UpdatedAt,
+            up.FullName as InstructorName,
+            pm.MethodName as PaymentMethodName,
+            admin_up.FullName as AdminName
+        ${commonQuery}
+        ${orderByClause}
+        OFFSET @Offset ROWS FETCH NEXT @Limit ROWS ONLY;
+    `);
+
+    return { requests: dataResult.recordset, total };
+  } catch (error) {
+    logger.error('Error finding withdrawal requests:', error);
+    throw error;
+  }
+};
+
 // === Payouts ===
 
+/**
+ * Tạo bản ghi payout mới.
+ */
 const createPayout = async (payoutData, transaction) => {
-  const request = transaction.request(); // Payout thường được tạo trong transaction khi xử lý request
+  const request = transaction.request();
   request.input('InstructorID', sql.BigInt, payoutData.InstructorID);
-  request.input('Amount', sql.Decimal(18, 4), payoutData.Amount); // Số tiền approve
+  request.input('Amount', sql.Decimal(18, 4), payoutData.Amount);
   request.input('CurrencyID', sql.VarChar, payoutData.CurrencyID);
-  // ActualAmount, ActualCurrencyID, ExchangeRate sẽ là NULL ban đầu
   request.input('PaymentMethodID', sql.VarChar, payoutData.PaymentMethodID);
-  request.input('PayoutDetails', sql.NVarChar, payoutData.PayoutDetails); // Snapshot bank info
+  request.input('PayoutDetails', sql.NVarChar, payoutData.PayoutDetails);
   request.input('Fee', sql.Decimal(18, 4), payoutData.Fee || 0);
   request.input(
     'PayoutStatusID',
@@ -140,8 +237,7 @@ const createPayout = async (payoutData, transaction) => {
     'RequestedAt',
     sql.DateTime2,
     payoutData.RequestedAt || new Date()
-  ); // Có thể lấy từ Request
-  // ProcessedAt, CompletedAt sẽ là NULL ban đầu
+  );
   request.input('AdminID', sql.BigInt, payoutData.AdminID);
   request.input('AdminNote', sql.NVarChar, payoutData.AdminNote);
 
@@ -164,9 +260,10 @@ const createPayout = async (payoutData, transaction) => {
   }
 };
 
-// Thêm hàm updatePayoutStatus khi thực hiện chi trả thực tế (Admin action)
+/**
+ * Cập nhật trạng thái thực thi payout.
+ */
 const updatePayoutExecutionStatus = async (payoutId, updateData) => {
-  // updateData có thể chứa: PayoutStatusID, ProcessedAt, CompletedAt, Fee (nếu có thay đổi), ActualAmount, ActualCurrencyID, ExchangeRate
   try {
     const pool = await getConnection();
     const request = pool.request();
@@ -174,7 +271,6 @@ const updatePayoutExecutionStatus = async (payoutId, updateData) => {
     request.input('UpdatedAt', sql.DateTime2, new Date());
 
     const setClauses = ['UpdatedAt = @UpdatedAt'];
-    // Add inputs and set clauses based on updateData keys
     if (updateData.PayoutStatusID) {
       request.input('PayoutStatusID', sql.VarChar, updateData.PayoutStatusID);
       setClauses.push('PayoutStatusID = @PayoutStatusID');
@@ -215,7 +311,6 @@ const updatePayoutExecutionStatus = async (payoutId, updateData) => {
       request.input('Fee', sql.Decimal(18, 4), updateData.Fee);
       setClauses.push('Fee = @Fee');
     }
-    // Thêm AdminNote nếu cần
 
     if (setClauses.length === 1) return null;
 
@@ -236,21 +331,18 @@ const updatePayoutExecutionStatus = async (payoutId, updateData) => {
 
 /**
  * Tìm Payout bằng ID.
- * @param {number} payoutId
- * @returns {Promise<object|null>}
  */
 const findPayoutById = async (payoutId) => {
   try {
     const pool = await getConnection();
     const request = pool.request();
     request.input('PayoutID', sql.BigInt, payoutId);
-    // Join để lấy thêm thông tin instructor, request liên quan nếu cần
     const result = await request.query(`
           SELECT p.*, wr.RequestID, up.FullName as InstructorName, acc.Email as InstructorEmail
           FROM Payouts p
           JOIN Accounts acc ON p.InstructorID = acc.AccountID
           JOIN UserProfiles up ON p.InstructorID = up.AccountID
-          LEFT JOIN WithdrawalRequests wr ON p.PayoutID = wr.PayoutID -- Join để lấy RequestID nếu có
+          LEFT JOIN WithdrawalRequests wr ON p.PayoutID = wr.PayoutID
           WHERE p.PayoutID = @PayoutID;
       `);
     return result.recordset[0] || null;
@@ -262,9 +354,6 @@ const findPayoutById = async (payoutId) => {
 
 /**
  * Lấy danh sách Payouts với bộ lọc và phân trang (cho Admin).
- * @param {object} filters - { instructorId, statusId, paymentMethodId }
- * @param {object} options - { page, limit, sortBy }
- * @returns {Promise<{ payouts: object[], total: number }>}
  */
 const findAllPayouts = async (filters = {}, options = {}) => {
   const { instructorId, statusId, paymentMethodId } = filters;
@@ -280,7 +369,7 @@ const findAllPayouts = async (filters = {}, options = {}) => {
               p.PayoutID, p.Amount, p.CurrencyID, p.PayoutStatusID, p.RequestedAt,
               p.ProcessedAt, p.CompletedAt, p.PaymentMethodID,
               up.FullName as InstructorName, p.InstructorID,
-              adm_up.FullName as AdminName -- Admin xử lý (nếu có)
+              adm_up.FullName as AdminName
           FROM Payouts p
           JOIN UserProfiles up ON p.InstructorID = up.AccountID
           LEFT JOIN Accounts adm_acc ON p.AdminID = adm_acc.AccountID
@@ -290,7 +379,7 @@ const findAllPayouts = async (filters = {}, options = {}) => {
           SELECT COUNT(p.PayoutID) as total
           FROM Payouts p
           JOIN UserProfiles up ON p.InstructorID = up.AccountID
-      `; // Count đơn giản hơn
+      `;
     const whereClauses = [];
 
     if (instructorId) {
@@ -309,13 +398,12 @@ const findAllPayouts = async (filters = {}, options = {}) => {
     const whereCondition =
       whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
     query += ` ${whereCondition}`;
-    countQuery += ` ${whereCondition}`; // Áp dụng filter cho count
+    countQuery += ` ${whereCondition}`;
 
     const countResult = await request.query(countQuery);
     const { total } = countResult.recordset[0];
 
-    // Sắp xếp
-    let orderByClause = 'ORDER BY p.RequestedAt DESC'; // Mặc định
+    let orderByClause = 'ORDER BY p.RequestedAt DESC';
     if (sortBy) {
       const [sortField, sortOrder] = sortBy.split(':');
       const allowedSortFields = {
@@ -333,7 +421,6 @@ const findAllPayouts = async (filters = {}, options = {}) => {
     }
     query += ` ${orderByClause}`;
 
-    // Phân trang
     request.input('Limit', sql.Int, limit);
     request.input('Offset', sql.Int, offset);
     query += ' OFFSET @Offset ROWS FETCH NEXT @Limit ROWS ONLY';
@@ -346,113 +433,8 @@ const findAllPayouts = async (filters = {}, options = {}) => {
   }
 };
 
-// /**
-//  * Lấy lịch sử yêu cầu rút tiền của một giảng viên (phân trang).
-//  * @param {number} instructorId
-//  * @param {object} options - { page, limit, status }
-//  * @returns {Promise<{requests: object[], total: number}>}
-//  */
-// const findWithdrawalRequestsByInstructor = async (
-//   instructorId,
-//   options = {}
-// ) => {
-//   const { page = 1, limit = 10, status = '' } = options;
-//   const offset = (page - 1) * limit;
-
-//   try {
-//     const pool = await getConnection();
-//     const request = pool.request();
-//     request.input('InstructorID', sql.BigInt, instructorId);
-
-//     const whereClauses = ['InstructorID = @InstructorID'];
-//     if (status) {
-//       request.input('Status', sql.VarChar, status);
-//       whereClauses.push('Status = @Status');
-//     }
-//     const whereCondition = `WHERE ${whereClauses.join(' AND ')}`;
-
-//     const commonQuery = `FROM WithdrawalRequests ${whereCondition}`;
-
-//     const countResult = await request.query(
-//       `SELECT COUNT(*) as total ${commonQuery}`
-//     );
-//     const { total } = countResult.recordset[0];
-
-//     request.input('Limit', sql.Int, limit);
-//     request.input('Offset', sql.Int, offset);
-//     // Lấy các cột cần thiết cho lịch sử
-//     const dataResult = await request.query(`
-//           SELECT RequestID, RequestedAmount, RequestedCurrencyID, Status, CreatedAt, ProcessedAt, AdminNotes
-//           ${commonQuery}
-//           ORDER BY CreatedAt DESC
-//           OFFSET @Offset ROWS FETCH NEXT @Limit ROWS ONLY;
-//       `);
-
-//     return { requests: dataResult.recordset, total };
-//   } catch (error) {
-//     logger.error(
-//       `Error finding withdrawal requests for instructor ${instructorId}:`,
-//       error
-//     );
-//     throw error;
-//   }
-// };
-
-// /**
-//  * Lấy lịch sử chi trả (Payouts) của một giảng viên (phân trang).
-//  * @param {number} instructorId
-//  * @param {object} options - { page, limit, statusId }
-//  * @returns {Promise<{payouts: object[], total: number}>}
-//  */
-// const findPayoutsByInstructor = async (instructorId, options = {}) => {
-//   const { page = 1, limit = 10, statusId = '' } = options;
-//   const offset = (page - 1) * limit;
-
-//   try {
-//     const pool = await getConnection();
-//     const request = pool.request();
-//     request.input('InstructorID', sql.BigInt, instructorId);
-
-//     const whereClauses = ['InstructorID = @InstructorID'];
-//     if (statusId) {
-//       request.input('PayoutStatusID', sql.VarChar, statusId);
-//       whereClauses.push('PayoutStatusID = @PayoutStatusID');
-//     }
-//     const whereCondition = `WHERE ${whereClauses.join(' AND ')}`;
-
-//     const commonQuery = `FROM Payouts ${whereCondition}`;
-
-//     const countResult = await request.query(
-//       `SELECT COUNT(*) as total ${commonQuery}`
-//     );
-//     const { total } = countResult.recordset[0];
-
-//     request.input('Limit', sql.Int, limit);
-//     request.input('Offset', sql.Int, offset);
-//     // Lấy các cột cần thiết cho lịch sử
-//     const dataResult = await request.query(`
-//           SELECT PayoutID, Amount, CurrencyID, PayoutStatusID, RequestedAt, ProcessedAt, CompletedAt, PaymentMethodID, Fee, AdminNote
-//           ${commonQuery}
-//           ORDER BY RequestedAt DESC
-//           OFFSET @Offset ROWS FETCH NEXT @Limit ROWS ONLY;
-//       `);
-
-//     return { payouts: dataResult.recordset, total };
-//   } catch (error) {
-//     logger.error(
-//       `Error finding payouts for instructor ${instructorId}:`,
-//       error
-//     );
-//     throw error;
-//   }
-// };
-
 /**
  * Lấy lịch sử hoạt động rút tiền tổng hợp của một giảng viên.
- * Join WithdrawalRequests với Payouts và các bảng liên quan.
- * @param {number} instructorId
- * @param {object} options - { page, limit, overallStatus, dateFrom, dateTo, sortBy }
- * @returns {Promise<{activities: object[], total: number}>}
  */
 const findWithdrawalActivities = async (instructorId, options = {}) => {
   const {
@@ -477,13 +459,12 @@ const findWithdrawalActivities = async (instructorId, options = {}) => {
             wr.Status as RequestStatus,
             wr.CreatedAt as RequestedAt,
             wr.InstructorNotes,
-            wr_admin.FullName as RequestAdminName, -- Admin xử lý request
+            wr_admin.FullName as RequestAdminName,
             wr.AdminNotes as AdminNotesForRequest,
             wr.ProcessedAt as RequestProcessedAt,
-            wr.PayoutDetailsSnapshot, -- Thông tin bank/paypal lúc yêu cầu
-
+            wr.PayoutDetailsSnapshot,
             p.PayoutID,
-            p.Amount as PayoutAmount, -- Số tiền thực tế được duyệt để payout (trước phí)
+            p.Amount as PayoutAmount,
             p.CurrencyID as PayoutCurrencyID,
             p.ActualAmount as ActualAmountPaid,
             p.ActualCurrencyID as ActualPayoutCurrencyID,
@@ -492,12 +473,10 @@ const findWithdrawalActivities = async (instructorId, options = {}) => {
             p.PayoutStatusID,
             p_status.StatusName as PayoutStatusName,
             pm.MethodName as PaymentMethodUsed,
-            p.PayoutDetails as PayoutExecutionDetails, -- Có thể khác với Snapshot nếu admin sửa
+            p.PayoutDetails as PayoutExecutionDetails,
             p.CompletedAt as PaymentCompletedAt,
-            p_admin.FullName as PayoutAdminName, -- Admin thực hiện payout
+            p_admin.FullName as PayoutAdminName,
             p.AdminNote as AdminNotesForPayout
-            -- ExternalTransactionID của Payout không có trong bảng Payouts, mà ở CoursePayments (nếu là thanh toán vào)
-            -- Nếu bạn có cột ExternalTransactionID trong Payouts cho giao dịch chi ra, hãy thêm vào.
         `;
 
     const fromJoins = `
@@ -515,36 +494,34 @@ const findWithdrawalActivities = async (instructorId, options = {}) => {
 
     if (overallStatus) {
       request.input('OverallStatus', sql.VarChar, overallStatus);
-      // Map overallStatus sang điều kiện query cụ thể
       switch (overallStatus.toUpperCase()) {
-        case 'PENDING': // Yêu cầu đang chờ admin duyệt
+        case 'PENDING':
           whereClauses.push(`wr.Status = '${WithdrawalStatus.PENDING}'`);
           break;
-        case 'PROCESSING': // Yêu cầu đã duyệt, đang chờ chi trả hoặc đang xử lý chi trả
+        case 'PROCESSING':
           whereClauses.push(
             `(wr.Status = '${WithdrawalStatus.PROCESSING}' OR p.PayoutStatusID = '${PayoutStatus.PROCESSING}' OR p.PayoutStatusID = '${PayoutStatus.PENDING}')`
           );
           break;
-        case 'COMPLETED': // Payout đã hoàn thành (PAID)
+        case 'COMPLETED':
           whereClauses.push(`p.PayoutStatusID = '${PayoutStatus.PAID}'`);
           break;
-        case 'FAILED': // Payout thất bại
+        case 'FAILED':
           whereClauses.push(`p.PayoutStatusID = '${PayoutStatus.FAILED}'`);
           break;
-        case 'REJECTED': // Yêu cầu bị từ chối
+        case 'REJECTED':
           whereClauses.push(`wr.Status = '${WithdrawalStatus.REJECTED}'`);
           break;
-        case 'CANCELLED': // Yêu cầu bị hủy (nếu có trạng thái này)
+        case 'CANCELLED':
           whereClauses.push(`wr.Status = '${WithdrawalStatus.CANCELLED}'`);
           break;
         default:
-          // Bỏ qua nếu overallStatus không hợp lệ
           break;
       }
     }
     if (dateFrom) {
       request.input('DateFrom', sql.DateTime2, new Date(dateFrom));
-      whereClauses.push('wr.CreatedAt >= @DateFrom'); // Lọc theo ngày yêu cầu
+      whereClauses.push('wr.CreatedAt >= @DateFrom');
     }
     if (dateTo) {
       const inclusiveEndDate = new Date(dateTo);
@@ -561,7 +538,7 @@ const findWithdrawalActivities = async (instructorId, options = {}) => {
     );
     const { total } = countResult.recordset[0];
 
-    let orderByClause = 'ORDER BY wr.CreatedAt DESC'; // Mặc định
+    let orderByClause = 'ORDER BY wr.CreatedAt DESC';
     if (sortBy === 'requestedAt:asc')
       orderByClause = 'ORDER BY wr.CreatedAt ASC';
     else if (sortBy === 'paymentCompletedAt:desc')
@@ -591,16 +568,12 @@ const findWithdrawalActivities = async (instructorId, options = {}) => {
 
 /**
  * Tính tổng số tiền đang trong các yêu cầu rút tiền chờ xử lý của giảng viên.
- * @param {number} instructorId
- * @param {object} [transaction=null]
- * @returns {Promise<number>}
  */
 const getPendingPayoutsAmount = async (instructorId, transaction = null) => {
   const executor = transaction
     ? transaction.request()
     : (await getConnection()).request();
   executor.input('InstructorID', sql.BigInt, instructorId);
-  // Các trạng thái được coi là đang chờ xử lý
   const pendingStatuses = [
     WithdrawalStatus.PENDING,
     WithdrawalStatus.PROCESSING,
@@ -629,17 +602,14 @@ const getPendingPayoutsAmount = async (instructorId, transaction = null) => {
 };
 
 module.exports = {
-  // Withdrawals
   createWithdrawalRequest,
   findWithdrawalRequestById,
   updateWithdrawalRequestStatus,
+  findWithdrawalRequests,
   findPayoutById,
   findAllPayouts,
-  // Payouts
   createPayout,
   updatePayoutExecutionStatus,
-  // findWithdrawalRequestsByInstructor, // ko dùng nữa
-  // findPayoutsByInstructor, // ko dùng nữa
   findWithdrawalActivities,
   getPendingPayoutsAmount,
 };

@@ -16,14 +16,12 @@ const findOrCreateCart = async (accountId, transaction = null) => {
     : (await getConnection()).request();
   executor.input('AccountID', sql.BigInt, accountId);
   try {
-    // Thử tìm trước
     let result = await executor.query(
       'SELECT * FROM Carts WHERE AccountID = @AccountID;'
     );
     if (result.recordset[0]) {
       return result.recordset[0];
     }
-    // Tạo mới nếu không tìm thấy
     const createExecutor = transaction
       ? transaction.request()
       : (await getConnection()).request();
@@ -36,7 +34,6 @@ const findOrCreateCart = async (accountId, transaction = null) => {
     }
     throw new Error('Failed to create cart.');
   } catch (error) {
-    // Xử lý lỗi unique nếu có race condition khi tạo
     if (error.number === 2627 || error.number === 2601) {
       logger.warn(
         `Race condition detected during findOrCreateCart for Account=${accountId}. Retrying find.`
@@ -81,7 +78,6 @@ const addCartItem = async (itemData, transaction = null) => {
         `);
     return result.recordset[0];
   } catch (error) {
-    // Bắt lỗi unique constraint nếu item đã có trong giỏ
     if (error.number === 2627 || error.number === 2601) {
       logger.warn(
         `Attempt to add duplicate course ${itemData.CourseID} to cart ${itemData.CartID}`
@@ -89,7 +85,7 @@ const addCartItem = async (itemData, transaction = null) => {
       throw new ApiError(
         httpStatus.BAD_REQUEST,
         'Khóa học này đã có trong giỏ hàng.'
-      ); // Ném lỗi để service xử lý
+      );
     }
     logger.error('Error adding cart item:', error);
     throw error;
@@ -183,7 +179,7 @@ const findCartItemsByCartId = async (cartId) => {
     const result = await request.query(`
             SELECT
                 ci.CartItemID, ci.CourseID, ci.PriceAtAddition, ci.AddedAt,
-                c.CourseName, c.Slug, c.ThumbnailUrl, c.OriginalPrice, c.DiscountedPrice, -- Lấy giá hiện tại để so sánh/hiển thị
+                c.CourseName, c.Slug, c.ThumbnailUrl, c.OriginalPrice, c.DiscountedPrice,
                 up.FullName as InstructorName
             FROM CartItems ci
             JOIN Courses c ON ci.CourseID = c.CourseID

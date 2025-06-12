@@ -1,10 +1,9 @@
 const cron = require('node-cron');
-const logger = require('../utils/logger'); // Đảm bảo đường dẫn đúng
-const { getConnection, sql } = require('../database/connection'); // Đảm bảo đường dẫn đúng
-const OrderStatus = require('../core/enums/OrderStatus'); // Đảm bảo đường dẫn đúng
-const promotionRepository = require('../api/promotions/promotions.repository'); // Đảm bảo đường dẫn đúng
+const logger = require('../utils/logger');
+const { getConnection, sql } = require('../database/connection');
+const OrderStatus = require('../core/enums/OrderStatus');
+const promotionRepository = require('../api/promotions/promotions.repository');
 
-// Định nghĩa thời gian chờ (ví dụ: 60 phút)
 const PENDING_ORDER_TIMEOUT_MINUTES = parseInt(
   process.env.PENDING_ORDER_TIMEOUT_MINUTES || '60',
   10
@@ -25,8 +24,7 @@ const cancelOverduePendingOrders = async () => {
       Date.now() - PENDING_ORDER_TIMEOUT_MINUTES * 60 * 1000
     );
 
-    // Lấy tất cả đơn hàng quá hạn cần hủy, bao gồm cả PromotionID
-    const findRequest = transaction.request(); // Dùng request này cho nhiều query
+    const findRequest = transaction.request();
     findRequest.input(
       'PendingStatus',
       sql.VarChar,
@@ -45,11 +43,10 @@ const cancelOverduePendingOrders = async () => {
     if (ordersToCancel.length > 0) {
       const orderIdsToCancel = ordersToCancel.map((o) => o.OrderID);
 
-      // Tạo chuỗi parameter placeholders cho IN clause (an toàn hơn nối chuỗi)
       const orderIdPlaceholders = orderIdsToCancel
         .map((_, index) => `@orderIdCancel${index}`)
         .join(',');
-      const cancelUpdateRequest = transaction.request(); // Request mới cho update
+      const cancelUpdateRequest = transaction.request();
       cancelUpdateRequest.input(
         'CancelledStatus',
         sql.VarChar,
@@ -68,7 +65,6 @@ const cancelOverduePendingOrders = async () => {
         `[CRON_JOB] Cancelled ${updateResult.rowsAffected[0]} overdue pending orders: IDs ${orderIdsToCancel.join(', ')}.`
       );
 
-      // Hoàn lại lượt sử dụng cho các Promotion đã áp dụng
       for (const order of ordersToCancel) {
         if (order.PromotionID) {
           const reverted = await promotionRepository.decrementUsageCount(
@@ -94,7 +90,6 @@ const cancelOverduePendingOrders = async () => {
   } catch (error) {
     logger.error('[CRON_JOB] Error cancelling overdue pending orders:', error);
     if (transaction.active) {
-      // Kiểm tra transaction còn active không
       try {
         await transaction.rollback();
         logger.info('[CRON_JOB] Transaction rolled back due to error.');
@@ -110,7 +105,7 @@ const cancelOverduePendingOrders = async () => {
  */
 const schedulePendingOrderCancellation = () => {
   const cronSchedule =
-    process.env.CANCEL_PENDING_ORDERS_CRON_SCHEDULE || '*/30 * * * *'; // Mặc định 30 phút
+    process.env.CANCEL_PENDING_ORDERS_CRON_SCHEDULE || '*/30 * * * *';
   if (cron.validate(cronSchedule)) {
     cron.schedule(cronSchedule, () => {
       logger.info(

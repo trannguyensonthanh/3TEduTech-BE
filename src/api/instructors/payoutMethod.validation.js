@@ -1,7 +1,6 @@
 const Joi = require('joi');
-const PaymentMethod = require('../../core/enums/PaymentMethod'); // Import enum
+const PaymentMethod = require('../../core/enums/PaymentMethod');
 
-// Schema cho details dựa trên methodId (ví dụ)
 const bankDetailsSchema = Joi.object({
   bankAccountNumber: Joi.string().required().max(50),
   bankName: Joi.string().required().max(100),
@@ -12,58 +11,78 @@ const paypalDetailsSchema = Joi.object({
   email: Joi.string().email().required(),
 }).required();
 
+// Thêm phương thức thanh toán
 const addPayoutMethod = {
   body: Joi.object().keys({
     methodId: Joi.string()
       .required()
-      .valid(PaymentMethod.BANK_TRANSFER, PaymentMethod.PAYPAL), // Chỉ cho phép các method hỗ trợ
-    details: Joi.alternatives().conditional('methodId', {
-      // Validate details dựa trên methodId
-      is: PaymentMethod.BANK_TRANSFER,
-      then: bankDetailsSchema,
-      otherwise: Joi.alternatives().conditional('methodId', {
+      .valid(
+        PaymentMethod.BANK_TRANSFER,
+        PaymentMethod.PAYPAL,
+        PaymentMethod.MOMO,
+        PaymentMethod.VNPAY,
+        PaymentMethod.SYSTEM_CREDIT,
+        PaymentMethod.CRYPTO,
+        PaymentMethod.STRIPE
+      ),
+    details: Joi.alternatives().conditional('methodId', [
+      {
+        is: PaymentMethod.BANK_TRANSFER,
+        then: bankDetailsSchema,
+      },
+      {
         is: PaymentMethod.PAYPAL,
         then: paypalDetailsSchema,
-        otherwise: Joi.object().required(), // Mặc định nếu có method khác
-      }),
-    }),
+      },
+      {
+        is: Joi.valid(
+          PaymentMethod.MOMO,
+          PaymentMethod.VNPAY,
+          PaymentMethod.SYSTEM_CREDIT,
+          PaymentMethod.CRYPTO,
+          PaymentMethod.STRIPE
+        ),
+        then: Joi.object().required(),
+      },
+    ]),
     isPrimary: Joi.boolean().optional(),
   }),
 };
 
+// Cập nhật phương thức thanh toán
 const updatePayoutMethod = {
   params: Joi.object().keys({
     payoutMethodId: Joi.number().integer().required(),
   }),
   body: Joi.object()
     .keys({
-      // Cho phép cập nhật details hoặc status hoặc isPrimary
-      // Validation cho details cần phức tạp hơn vì phải biết methodId hiện tại
-      // --> Tạm thời cho phép object bất kỳ, service sẽ validate kỹ hơn
       details: Joi.object().optional(),
       status: Joi.string().valid('ACTIVE', 'INACTIVE').optional(),
       isPrimary: Joi.boolean().optional(),
     })
-    .min(1), // Phải có ít nhất 1 trường
+    .min(1),
 };
 
+// Đặt phương thức thanh toán chính
 const setPrimary = {
   params: Joi.object().keys({
     payoutMethodId: Joi.number().integer().required(),
   }),
 };
 
+// Xóa phương thức thanh toán
 const deletePayoutMethod = {
   params: Joi.object().keys({
     payoutMethodId: Joi.number().integer().required(),
   }),
 };
 
+// Cập nhật chi tiết phương thức thanh toán
 const updatePayoutMethodDetails = {
   params: Joi.object().keys({
     payoutMethodId: Joi.number().integer().required(),
   }),
-  body: Joi.object().required().min(1), // Yêu cầu body có dữ liệu, service sẽ validate chi tiết
+  body: Joi.object().required().min(1),
 };
 
 module.exports = {

@@ -1,7 +1,6 @@
 // Đường dẫn: src/api/auth/auth.service.js
 // eslint-disable-next-line no-restricted-syntax
 // eslint-disable-next-line no-await-in-loop
-
 const axios = require('axios');
 const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
@@ -10,8 +9,8 @@ const httpStatus = require('http-status').status;
 const moment = require('moment');
 const { getConnection, sql } = require('../../database/connection');
 const authRepository = require('./auth.repository');
-const userRepository = require('../users/users.repository'); // Cần để tạo profile
-const accountRepository = require('./auth.repository'); // Sử dụng accountRepository
+const userRepository = require('../users/users.repository');
+const accountRepository = require('./auth.repository');
 const { hashPassword, comparePassword } = require('../../utils/hashPassword');
 const {
   generateAccessToken,
@@ -24,13 +23,14 @@ const {
 const jwtConfig = require('../../config/jwt');
 const ApiError = require('../../core/errors/ApiError');
 const logger = require('../../utils/logger');
-const skillsRepository = require('../skills/skills.repository'); // *** Import repo skills ***
-const instructorRepository = require('../instructors/instructors.repository'); // *** Import repo instructors ***
+const skillsRepository = require('../skills/skills.repository');
+const instructorRepository = require('../instructors/instructors.repository');
 const AccountStatus = require('../../core/enums/AccountStatus');
 const Roles = require('../../core/enums/Roles');
 const LoginType = require('../../core/enums/LoginType');
-const emailSender = require('../../utils/emailSender'); // Sẽ dùng sau
+const emailSender = require('../../utils/emailSender');
 const config = require('../../config');
+const settingsService = require('../settings/settings.service');
 
 let googleClient = null;
 if (config.googleAuth.clientID) {
@@ -39,30 +39,29 @@ if (config.googleAuth.clientID) {
 } else {
   logger.warn('Google ClientID not configured, Google login might fail.');
 }
-/**
- * Đăng ký người dùng mới (Email/Password).
- * @param {object} userData - { email, password, fullName, roleId (optional, default STUDENT) }.
- * @returns {Promise<object>} - Đối tượng người dùng mới (không bao gồm password).
- */
 const register = async (userData) => {
+  const allowRegistration = await settingsService.getSettingValue(
+    'AllowUserRegistration',
+    'true'
+  );
+  if (allowRegistration !== 'true') {
+    throw new ApiError(
+      httpStatus.FORBIDDEN,
+      'Chức năng đăng ký người dùng mới hiện đang tạm khóa.'
+    );
+  }
   const { email, password, fullName, roleId = Roles.STUDENT } = userData;
-
-  // 1. Kiểm tra email tồn tại
   const existingAccount = await authRepository.findAccountByEmail(email);
   if (existingAccount) {
     if (existingAccount.Status === AccountStatus.PENDING_VERIFICATION) {
-      // Nếu email đang ở trạng thái PENDING_VERIFICATION, cập nhật lại thời gian xác thực
       const verificationToken = generateRandomToken();
       const verificationExpires = calculateTokenExpiration(
         jwtConfig.emailVerificationTokenExpiresMinutes
       );
-
       await authRepository.updateAccountById(existingAccount.AccountID, {
         EmailVerificationToken: verificationToken,
         EmailVerificationExpires: verificationExpires,
       });
-
-      // Gửi lại email xác thực
       try {
         await emailSender.sendVerificationEmail(
           email,
@@ -76,34 +75,22 @@ const register = async (userData) => {
           emailError
         );
       }
-
-      // Báo cho người dùng rằng email đã được gửi
       return {
         message:
           'Email đã tồn tại nhưng chưa được xác thực. Vui lòng kiểm tra email để xác thực tài khoản.',
       };
     }
-
-    // Nếu email đã tồn tại và không ở trạng thái PENDING_VERIFICATION
     throw new ApiError(httpStatus.BAD_REQUEST, 'Email đã được sử dụng.');
   }
-
-  // 2. Hash mật khẩu
   const hashedPassword = await hashPassword(password);
-
-  // 3. Chuẩn bị dữ liệu và token xác thực
   const verificationToken = generateRandomToken();
   const verificationExpires = calculateTokenExpiration(
     jwtConfig.emailVerificationTokenExpiresMinutes
   );
-
-  // 4. Bắt đầu transaction
   const pool = await getConnection();
   const transaction = new sql.Transaction(pool);
   try {
     await transaction.begin();
-
-    // 5. Tạo Account
     const accountData = {
       Email: email,
       HashedPassword: hashedPassword,
@@ -118,8 +105,6 @@ const register = async (userData) => {
       transaction
     );
     const accountId = newAccount.AccountID;
-
-    // 6. Tạo UserProfile
     const profileData = {
       AccountID: accountId,
       FullName: fullName,
@@ -128,8 +113,6 @@ const register = async (userData) => {
       profileData,
       transaction
     );
-
-    // 7. Tạo AuthMethod (EMAIL)
     const authMethodData = {
       AccountID: accountId,
       LoginType: LoginType.EMAIL,
@@ -139,11 +122,7 @@ const register = async (userData) => {
       authMethodData,
       transaction
     );
-
-    // 8. Commit transaction
     await transaction.commit();
-
-    // 9. Gửi email xác thực
     try {
       await emailSender.sendVerificationEmail(
         email,
@@ -157,8 +136,6 @@ const register = async (userData) => {
         emailError
       );
     }
-
-    // 10. Trả về thông báo cho người dùng
     return {
       message:
         'Đăng ký thành công. Vui lòng kiểm tra email để xác thực tài khoản.',
@@ -172,12 +149,6 @@ const register = async (userData) => {
     );
   }
 };
-/**
- * Đăng nhập bằng Email/Password.
- * @param {string} email
- * @param {string} password
- * @returns {Promise<{accessToken: string, refreshToken: string, user: object}>}
- */
 const login = async (email, password) => {
   const account = await authRepository.findAccountByEmail(email);
   if (!account) {
@@ -186,14 +157,12 @@ const login = async (email, password) => {
       'Email hoặc mật khẩu không chính xác.'
     );
   }
-
   if (account.Status === AccountStatus.PENDING_VERIFICATION) {
     throw new ApiError(
       httpStatus.UNAUTHORIZED,
       'Tài khoản chưa được xác thực. Vui lòng kiểm tra email.'
     );
   }
-
   if (
     account.Status === AccountStatus.BANNED ||
     account.Status === AccountStatus.INACTIVE
@@ -203,15 +172,12 @@ const login = async (email, password) => {
       'Tài khoản đã bị khóa hoặc không hoạt động.'
     );
   }
-
-  // Kiểm tra nếu tài khoản chỉ có social login và không có password
   if (account.HasSocialLogin && !account.HashedPassword) {
     throw new ApiError(
       httpStatus.BAD_REQUEST,
       'Vui lòng đăng nhập bằng phương thức mạng xã hội đã liên kết.'
     );
   }
-
   const isPasswordMatch = await comparePassword(
     password,
     account.HashedPassword
@@ -222,22 +188,16 @@ const login = async (email, password) => {
       'Email hoặc mật khẩu không chính xác.'
     );
   }
-
-  // Tạo tokens
   const payload = { accountId: account.AccountID, role: account.RoleID };
   const accessToken = generateAccessToken(payload);
-  const refreshToken = generateRefreshToken({ accountId: account.AccountID }); // Refresh token thường chỉ cần ID
-
-  // Lấy thông tin profile để trả về
+  const refreshToken = generateRefreshToken({ accountId: account.AccountID });
   const userProfile = await userRepository.findUserProfileById(
     account.AccountID
   );
-
   return {
     accessToken,
     refreshToken,
     user: {
-      // Chỉ trả về thông tin cần thiết cho client
       id: userProfile.AccountID,
       email: userProfile.Email,
       fullName: userProfile.FullName,
@@ -247,12 +207,6 @@ const login = async (email, password) => {
     },
   };
 };
-
-/**
- * Làm mới access token bằng refresh token.
- * @param {string} providedRefreshToken
- * @returns {Promise<{accessToken: string}>}
- */
 const refreshAuth = async (providedRefreshToken) => {
   const payload = await verifyToken(providedRefreshToken);
   if (!payload || !payload.accountId) {
@@ -261,7 +215,6 @@ const refreshAuth = async (providedRefreshToken) => {
       'Refresh token không hợp lệ hoặc đã hết hạn.'
     );
   }
-
   const account = await authRepository.findAccountById(payload.accountId);
   if (!account || account.Status !== AccountStatus.ACTIVE) {
     throw new ApiError(
@@ -269,46 +222,25 @@ const refreshAuth = async (providedRefreshToken) => {
       'Người dùng không tồn tại hoặc không hoạt động.'
     );
   }
-
-  // Tạo access token mới
   const newAccessToken = generateAccessToken({
     accountId: account.AccountID,
     role: account.RoleID,
   });
-
   return { accessToken: newAccessToken };
 };
-
-/**
- * Xác thực email bằng token.
- * @param {string} verificationToken
- * @returns {Promise<void>}
- */
 const verifyEmail = async (verificationToken) => {
   const account =
     await authRepository.findAccountByVerificationToken(verificationToken);
-
   if (!account) {
     throw new ApiError(httpStatus.BAD_REQUEST, 'Token xác thực không hợp lệ.');
   }
-
   if (moment().isAfter(account.EmailVerificationExpires)) {
-    // TODO: Cân nhắc cho phép gửi lại email xác thực ở đây
     throw new ApiError(httpStatus.BAD_REQUEST, 'Token xác thực đã hết hạn.');
   }
-
   if (account.Status === AccountStatus.ACTIVE) {
-    // Đã xác thực rồi, không cần làm gì thêm, hoặc có thể báo lỗi nhẹ nhàng
     logger.info(`Account ${account.AccountID} is already verified.`);
-    // Có thể clear token nếu muốn
-    // await authRepository.updateAccountById(account.AccountID, {
-    //     EmailVerificationToken: null,
-    //     EmailVerificationExpires: null,
-    // });
-    return; // Kết thúc sớm
+    return;
   }
-
-  // Cập nhật trạng thái và xóa token
   await authRepository.updateAccountById(account.AccountID, {
     Status: AccountStatus.ACTIVE,
     EmailVerificationToken: null,
@@ -316,39 +248,27 @@ const verifyEmail = async (verificationToken) => {
   });
   logger.info(`Account ${account.AccountID} verified successfully.`);
 };
-
-/**
- * Yêu cầu reset mật khẩu.
- * @param {string} email
- * @returns {Promise<void>}
- */
 const requestPasswordReset = async (email) => {
   const account = await authRepository.findAccountByEmail(email);
   if (!account) {
-    // Không báo lỗi cụ thể để tránh lộ thông tin email có tồn tại hay không
     logger.warn(`Password reset requested for non-existent email: ${email}`);
-    return; // Kết thúc âm thầm
+    return;
   }
   if (account.Status !== AccountStatus.ACTIVE) {
     logger.warn(
       `Password reset requested for inactive/banned account: ${email} (${account.Status})`
     );
-    return; // Không cho reset nếu tài khoản không active
+    return;
   }
-
   const resetToken = generateRandomToken();
   const resetExpires = calculateTokenExpiration(
     jwtConfig.passwordResetTokenExpiresMinutes
   );
-
   await authRepository.updateAccountById(account.AccountID, {
     PasswordResetToken: resetToken,
     PasswordResetExpires: resetExpires,
   });
-
-  // Gửi email reset password (Tạm thời comment out)
   try {
-    // Cần lấy fullName để cá nhân hóa email
     const userProfile = await userRepository.findUserProfileById(
       account.AccountID
     );
@@ -363,8 +283,6 @@ const requestPasswordReset = async (email) => {
       `Failed to send password reset email to ${email}:`,
       emailError
     );
-    // Có thể throw lỗi ở đây để báo cho người dùng biết email không gửi được
-    // Hoặc chỉ log và vẫn trả về thông báo thành công chung chung cho controller
     throw new ApiError(
       httpStatus.INTERNAL_SERVER_ERROR,
       'Không thể gửi email đặt lại mật khẩu lúc này.'
@@ -374,114 +292,92 @@ const requestPasswordReset = async (email) => {
     `Password reset requested for ${email}. Token generated (for debugging): ${resetToken}`
   );
 };
-
-/**
- * Reset mật khẩu bằng token.
- * @param {string} resetToken
- * @param {string} newPassword
- * @returns {Promise<void>}
- */
 const resetPassword = async (resetToken, newPassword) => {
   const account =
     await authRepository.findAccountByPasswordResetToken(resetToken);
-
   if (!account) {
     throw new ApiError(
       httpStatus.BAD_REQUEST,
       'Token reset mật khẩu không hợp lệ.'
     );
   }
-
   if (moment().isAfter(account.PasswordResetExpires)) {
     throw new ApiError(
       httpStatus.BAD_REQUEST,
       'Token reset mật khẩu đã hết hạn.'
     );
   }
-
   if (account.Status !== AccountStatus.ACTIVE) {
     throw new ApiError(httpStatus.BAD_REQUEST, 'Tài khoản không hoạt động.');
   }
-
   const hashedNewPassword = await hashPassword(newPassword);
-
   await authRepository.updateAccountById(account.AccountID, {
     HashedPassword: hashedNewPassword,
-    PasswordResetToken: null, // Xóa token sau khi sử dụng
+    PasswordResetToken: null,
     PasswordResetExpires: null,
   });
   logger.info(`Password reset successfully for account ${account.AccountID}`);
 };
-
-/**
- * Đăng ký tài khoản Giảng viên mới.
- * @param {object} instructorData - Dữ liệu từ request body (đã validate).
- * @returns {Promise<object>} - Thông tin tài khoản cơ bản đã tạo.
- */
 const registerInstructor = async (instructorData) => {
+  const allowInstructorRegistration = await settingsService.getSettingValue(
+    'AllowInstructorRegistration',
+    'true'
+  );
+  if (allowInstructorRegistration !== 'true') {
+    throw new ApiError(
+      httpStatus.FORBIDDEN,
+      'Chức năng đăng ký giảng viên hiện đang tạm khóa.'
+    );
+  }
+
   const {
     email,
     password,
     fullName,
     professionalTitle,
     bio,
-    skills = [], // Mảng skills (ID hoặc tên)
-    socialLinks = [], // Mảng object { platform, url }
+    skills = [],
+    socialLinks = [],
   } = instructorData;
-
-  // 1. Kiểm tra email tồn tại
   const existingAccount = await authRepository.findAccountByEmail(email);
   if (existingAccount) {
     throw new ApiError(httpStatus.BAD_REQUEST, 'Email đã được sử dụng.');
   }
-
-  // 2. Hash mật khẩu
   const hashedPassword = await hashPassword(password);
-
-  // 3. Chuẩn bị token xác thực email
   const verificationToken = generateRandomToken();
   const verificationExpires = calculateTokenExpiration(
     config.jwt.emailVerificationTokenExpiresMinutes
   );
-
-  // 4. Bắt đầu Transaction
   const pool = await getConnection();
   const transaction = new sql.Transaction(pool);
   try {
     await transaction.begin();
-
-    // 5. Tạo Accounts
     const accountData = {
       Email: email,
       HashedPassword: hashedPassword,
-      RoleID: Roles.INSTRUCTOR, // *** Gán vai trò GV ***
-      Status: AccountStatus.PENDING_VERIFICATION, // *** Chờ xác thực email ***
+      RoleID: Roles.INSTRUCTOR,
+      Status: AccountStatus.PENDING_VERIFICATION,
       EmailVerificationToken: verificationToken,
       EmailVerificationExpires: verificationExpires,
-      HasSocialLogin: false, // Đăng ký bằng email/pass
+      HasSocialLogin: false,
     };
     const newAccount = await authRepository.createAccountInTransaction(
       accountData,
       transaction
     );
     const accountId = newAccount.AccountID;
-
-    // 6. Tạo UserProfiles
     const profileData = {
       AccountID: accountId,
       FullName: fullName,
-      // Có thể thêm avatar mặc định nếu muốn
     };
     await userRepository.createUserProfileInTransaction(
       profileData,
       transaction
     );
-    console.log('Transaction:', transaction); // Log dữ liệu profile để kiểm tra
-    // 7. Tạo InstructorProfiles (nếu có thông tin)
     await instructorRepository.findOrCreateInstructorProfile(
       accountId,
       transaction
-    ); // Đảm bảo record tồn tại
+    );
     const instructorProfileUpdates = {};
     if (professionalTitle)
       instructorProfileUpdates.ProfessionalTitle = professionalTitle;
@@ -493,18 +389,12 @@ const registerInstructor = async (instructorData) => {
         transaction
       );
     }
-
-    // 8. Xử lý và tạo InstructorSkills
     if (skills && skills.length > 0) {
       const skillIdsToAdd = [];
-      // eslint-disable-next-line no-restricted-syntax
       for (const skillInput of skills) {
         let skillId;
         if (typeof skillInput === 'number') {
-          // Nếu là ID, kiểm tra xem skill có tồn tại không
-
           const existingSkill =
-            // eslint-disable-next-line no-await-in-loop
             await skillsRepository.findSkillById(skillInput);
           if (existingSkill) {
             skillId = existingSkill.SkillID;
@@ -514,8 +404,6 @@ const registerInstructor = async (instructorData) => {
             );
           }
         } else if (typeof skillInput === 'string' && skillInput.trim()) {
-          // Nếu là string, tìm hoặc tạo skill mới
-          // eslint-disable-next-line no-await-in-loop
           const skill = await skillsRepository.findOrCreateSkill(
             skillInput.trim(),
             transaction
@@ -523,40 +411,30 @@ const registerInstructor = async (instructorData) => {
           skillId = skill.SkillID;
         }
         if (skillId && !skillIdsToAdd.includes(skillId)) {
-          skillIdsToAdd.push(skillId); // Tránh trùng lặp
+          skillIdsToAdd.push(skillId);
         }
       }
-
-      // Thêm các skill hợp lệ vào InstructorSkills
-      // eslint-disable-next-line no-restricted-syntax
       for (const idToAdd of skillIdsToAdd) {
         try {
-          // eslint-disable-next-line no-await-in-loop
           await instructorRepository.addInstructorSkill(
             accountId,
             idToAdd,
             transaction
           );
         } catch (skillError) {
-          // Bỏ qua lỗi unique nếu cố thêm skill đã có
           if (
             !(
               skillError instanceof ApiError &&
               skillError.statusCode === httpStatus.BAD_REQUEST
             )
           ) {
-            throw skillError; // Ném lại lỗi khác
+            throw skillError;
           }
         }
       }
     }
-
-    // 9. Tạo InstructorSocialLinks
     if (socialLinks && socialLinks.length > 0) {
-      // eslint-disable-next-line no-restricted-syntax
       for (const link of socialLinks) {
-        // Repo dùng MERGE nên tự xử lý create/update
-        // eslint-disable-next-line no-await-in-loop
         await instructorRepository.createOrUpdateSocialLink(
           accountId,
           link.platform,
@@ -565,7 +443,6 @@ const registerInstructor = async (instructorData) => {
         );
       }
     }
-    // 10. Tạo AuthMethods (EMAIL)
     const authMethodData = {
       AccountID: accountId,
       LoginType: LoginType.EMAIL,
@@ -575,11 +452,7 @@ const registerInstructor = async (instructorData) => {
       authMethodData,
       transaction
     );
-
-    // 11. Commit transaction
     await transaction.commit();
-
-    // 12. Gửi email xác thực
     try {
       await emailSender.sendVerificationEmail(
         email,
@@ -593,8 +466,6 @@ const registerInstructor = async (instructorData) => {
         emailError
       );
     }
-
-    // 13. Trả về thông tin cơ bản
     const createdUser = await authRepository.findAccountById(accountId);
     return {
       accountId: createdUser.AccountID,
@@ -609,7 +480,6 @@ const registerInstructor = async (instructorData) => {
     await transaction.rollback();
     if (error instanceof ApiError) throw error;
     if (error.number === 2627 || error.number === 2601) {
-      // Lỗi unique chung (có thể từ email hoặc skill name mới)
       throw new ApiError(
         httpStatus.BAD_REQUEST,
         'Email hoặc tên kỹ năng mới đã tồn tại.'
@@ -621,26 +491,18 @@ const registerInstructor = async (instructorData) => {
     );
   }
 };
-
-// --- Helper Function: Tìm hoặc tạo User khi đăng nhập Social ---
-// Tái sử dụng logic từ các hàm verify cũ của Passport
 const findOrCreateSocialUser = async (profileData) => {
-  const { provider, externalId, email, fullName, avatarUrl } = profileData; // provider: 'GOOGLE' hoặc 'FACEBOOK'
-
+  const { provider, externalId, email, fullName, avatarUrl } = profileData;
   if (!email) {
     throw new ApiError(
       httpStatus.BAD_REQUEST,
       `Không thể lấy email từ ${provider}.`
     );
   }
-
   const pool = await getConnection();
   const transaction = new sql.Transaction(pool);
-
   try {
     await transaction.begin();
-
-    // 1. Tìm AuthMethod bằng externalId và provider
     const authMethod = await transaction
       .request()
       .input('ExternalID', sql.VarChar, externalId)
@@ -649,14 +511,11 @@ const findOrCreateSocialUser = async (profileData) => {
         'SELECT * FROM AuthMethods WHERE ExternalID = @ExternalID AND LoginType = @LoginType;'
       )
       .then((result) => result.recordset[0]);
-
     let account;
     let accountId;
-
     if (authMethod) {
-      // User đã đăng nhập bằng social này trước đó
       accountId = authMethod.AccountID;
-      account = await authRepository.findAccountById(accountId); // Lấy thông tin account
+      account = await authRepository.findAccountById(accountId);
       if (!account)
         throw new Error(
           `Account not found for existing ${provider} AuthMethod (AccountID: ${accountId})`
@@ -665,11 +524,8 @@ const findOrCreateSocialUser = async (profileData) => {
         `Existing ${provider} user found: AccountID=${accountId}, Email=${account.Email}`
       );
     } else {
-      // Chưa có AuthMethod -> Tìm Account bằng email
       account = await authRepository.findAccountByEmail(email);
-
       if (account) {
-        // Đã có tài khoản với email này
         accountId = account.AccountID;
         logger.info(
           `Account found via email for ${provider} login: AccountID=${accountId}, Email=${email}`
@@ -694,7 +550,6 @@ const findOrCreateSocialUser = async (profileData) => {
           logger.info(`Updated HasSocialLogin for AccountID ${accountId}`);
         }
       } else {
-        // User hoàn toàn mới -> Tạo mới
         logger.info(`New user detected via ${provider} Login: Email=${email}`);
         const newAccountData = {
           Email: email,
@@ -716,7 +571,6 @@ const findOrCreateSocialUser = async (profileData) => {
           RoleID: newAccountData.RoleID,
           Status: newAccountData.Status,
         };
-
         const profileData = {
           AccountID: accountId,
           FullName: fullName || email.split('@')[0],
@@ -726,7 +580,6 @@ const findOrCreateSocialUser = async (profileData) => {
           profileData,
           transaction
         );
-
         await authRepository.createAuthMethodInTransaction(
           {
             AccountID: accountId,
@@ -740,8 +593,6 @@ const findOrCreateSocialUser = async (profileData) => {
         );
       }
     }
-
-    // 2. Kiểm tra trạng thái tài khoản
     if (
       account.Status === AccountStatus.BANNED ||
       account.Status === AccountStatus.INACTIVE
@@ -751,16 +602,12 @@ const findOrCreateSocialUser = async (profileData) => {
         'Tài khoản của bạn đã bị khóa hoặc không hoạt động.'
       );
     }
-
-    // 3. Commit
     await transaction.commit();
-
-    // 4. Trả về thông tin account cần thiết để tạo token
     return {
       accountId: account.AccountID,
       role: account.RoleID,
-      email: account.Email, // Trả về thêm email và name để controller dùng
-      fullName: fullName || account.FullName, // Lấy tên từ social hoặc profile nếu có
+      email: account.Email,
+      fullName: fullName || account.FullName,
       avatarUrl: avatarUrl || account.AvatarUrl,
     };
   } catch (error) {
@@ -773,12 +620,6 @@ const findOrCreateSocialUser = async (profileData) => {
     );
   }
 };
-
-/**
- * Xử lý đăng nhập bằng Google (nhận ID Token từ frontend).
- * @param {string} idToken - ID Token nhận từ Google Sign-In client-side.
- * @returns {Promise<LoginResponse>} - Tokens và thông tin user.
- */
 const loginWithGoogle = async (idToken) => {
   if (!googleClient) {
     throw new ApiError(
@@ -786,40 +627,29 @@ const loginWithGoogle = async (idToken) => {
       'Google authentication is not configured on the server.'
     );
   }
-
   try {
-    // 1. Xác thực ID Token và lấy payload
     const ticket = await googleClient.verifyIdToken({
       idToken,
-      audience: config.googleAuth.clientID, // Chỉ định Client ID của bạn
+      audience: config.googleAuth.clientID,
     });
     const payload = ticket.getPayload();
-
     if (!payload) {
       throw new Error('Invalid ID token payload.');
     }
-
-    // 2. Trích xuất thông tin user từ payload
     const googleProfileData = {
       provider: LoginType.GOOGLE,
-      externalId: payload.sub, // Subject (Google User ID)
+      externalId: payload.sub,
       email: payload.email?.toLowerCase(),
       fullName: payload.name,
       avatarUrl: payload.picture,
     };
-
     if (!googleProfileData.email) {
-      // Trường hợp hiếm khi Google không trả về email dù đã request scope
       throw new ApiError(
         httpStatus.BAD_REQUEST,
         'Không thể lấy địa chỉ email từ Google.'
       );
     }
-
-    // 3. Tìm hoặc tạo user trong hệ thống (dùng hàm helper đã có)
     const systemUser = await findOrCreateSocialUser(googleProfileData);
-
-    // 4. Tạo tokens hệ thống
     const tokenPayload = {
       accountId: systemUser.accountId,
       role: systemUser.role,
@@ -828,7 +658,6 @@ const loginWithGoogle = async (idToken) => {
     const appRefreshToken = generateRefreshToken({
       accountId: systemUser.accountId,
     });
-
     return {
       accessToken: appAccessToken,
       refreshToken: appRefreshToken,
@@ -843,59 +672,38 @@ const loginWithGoogle = async (idToken) => {
     };
   } catch (error) {
     logger.error('Google ID Token verification/login failed:', error);
-    // Lỗi từ google-auth-library thường là Error thông thường
-    // Cần trả về lỗi rõ ràng cho client
     throw new ApiError(
       httpStatus.UNAUTHORIZED,
       `Xác thực Google thất bại: ${error.message || 'Unknown error'}`
     );
   }
 };
-
-/**
- * Xử lý đăng nhập bằng Facebook (nhận accessToken từ frontend).
- * @param {string} accessToken - Access Token từ Facebook SDK.
- * @returns {Promise<LoginResponse>} - Tokens và thông tin user.
- */
 const loginWithFacebook = async (accessToken) => {
   try {
-    // 1. Dùng accessToken để gọi Graph API lấy thông tin user
-    // Cần App Secret để tạo appsecret_proof (tăng cường bảo mật)
-
     const appSecretProof = crypto
       .createHmac('sha256', config.facebookAuth.clientSecret)
       .update(accessToken)
       .digest('hex');
-
-    const fields = 'id,name,email,picture.type(large)'; // Các trường cần lấy
+    const fields = 'id,name,email,picture.type(large)';
     const graphApiUrl = `https://graph.facebook.com/me?fields=${fields}&access_token=${accessToken}&appsecret_proof=${appSecretProof}`;
-
     const userInfoResponse = await axios.get(graphApiUrl);
     const profile = userInfoResponse.data;
-
     if (!profile || !profile.id) {
       throw new Error('Failed to fetch user profile from Facebook.');
     }
-
     const facebookProfileData = {
       provider: LoginType.FACEBOOK,
       externalId: profile.id,
-      email: profile.email?.toLowerCase(), // Email có thể không có
+      email: profile.email?.toLowerCase(),
       fullName: profile.name,
       avatarUrl: profile.picture?.data?.url,
     };
-    console.log('Facebook Profile Data:', facebookProfileData); // Log để kiểm tra
-
-    // 2. Tìm hoặc tạo user trong hệ thống
     const systemUser = await findOrCreateSocialUser(facebookProfileData);
-
-    // 3. Tạo tokens hệ thống
     const payload = { accountId: systemUser.accountId, role: systemUser.role };
     const appAccessToken = generateAccessToken(payload);
     const appRefreshToken = generateRefreshToken({
       accountId: systemUser.accountId,
     });
-
     return {
       accessToken: appAccessToken,
       refreshToken: appRefreshToken,
@@ -917,24 +725,14 @@ const loginWithFacebook = async (accessToken) => {
       error.response?.data?.error?.message ||
       'Đăng nhập bằng Facebook thất bại.';
     const status = error.response?.status || httpStatus.INTERNAL_SERVER_ERROR;
-    // Lỗi token hết hạn từ FB thường là 400 hoặc 401
     throw new ApiError(
       status === 401 ? httpStatus.BAD_REQUEST : status,
       message
     );
   }
 };
-
-/**
- * Hoàn tất đăng ký bằng Facebook khi người dùng tự cung cấp email.
- * @param {string} accessToken - Access Token từ Facebook SDK.
- * @param {string} userProvidedEmail - Email do người dùng nhập.
- * @returns {Promise<{ message: string }>} - Thông báo yêu cầu xác thực email.
- */
 const completeFacebookRegistration = async (accessToken, userProvidedEmail) => {
   const email = userProvidedEmail.toLowerCase();
-
-  // 1. Kiểm tra xem email người dùng nhập đã tồn tại trong hệ thống chưa
   const existingAccountByEmail = await authRepository.findAccountByEmail(email);
   if (existingAccountByEmail) {
     throw new ApiError(
@@ -942,19 +740,16 @@ const completeFacebookRegistration = async (accessToken, userProvidedEmail) => {
       'Địa chỉ email này đã được sử dụng.'
     );
   }
-
-  // 2. Xác thực accessToken với Facebook và lấy thông tin profile (đặc biệt là facebookId)
   let profile;
   try {
     const appSecretProof = crypto
       .createHmac('sha256', config.facebookAuth.clientSecret)
       .update(accessToken)
       .digest('hex');
-    const fields = 'id,name,picture.type(large)'; // Không cần request email nữa
+    const fields = 'id,name,picture.type(large)';
     const graphApiUrl = `https://graph.facebook.com/me?fields=${fields}&access_token=${accessToken}&appsecret_proof=${appSecretProof}`;
     const userInfoResponse = await axios.get(graphApiUrl);
     profile = userInfoResponse.data;
-
     if (!profile || !profile.id) {
       throw new Error('Failed to fetch user profile from Facebook.');
     }
@@ -968,19 +763,14 @@ const completeFacebookRegistration = async (accessToken, userProvidedEmail) => {
       'Xác thực Facebook thất bại. Vui lòng thử đăng nhập lại bằng Facebook.'
     );
   }
-
   const facebookId = profile.id;
   const fullName = profile.name;
   const avatarUrl = profile.picture?.data?.url;
-
-  // 3. Kiểm tra xem facebookId này đã liên kết với tài khoản nào khác chưa
-  // (Trường hợp hiếm: user dùng FB khác để đăng nhập rồi cung cấp email của tk cũ)
   const existingAuthMethod = await authRepository.findAuthMethodByExternalId(
     facebookId,
     LoginType.FACEBOOK
-  ); // Cần tạo hàm này
+  );
   if (existingAuthMethod) {
-    // Lấy email của tài khoản đã liên kết
     const linkedAccount = await authRepository.findAccountById(
       existingAuthMethod.AccountID
     );
@@ -989,23 +779,19 @@ const completeFacebookRegistration = async (accessToken, userProvidedEmail) => {
       `Tài khoản Facebook này đã được liên kết với email ${linkedAccount?.Email || 'khác'}.`
     );
   }
-
-  // 4. Bắt đầu Transaction để tạo tài khoản mới
   const pool = await getConnection();
   const transaction = new sql.Transaction(pool);
   try {
     await transaction.begin();
-
-    // 5. Tạo Accounts
-    const verificationToken = generateRandomToken(); // Vẫn cần token để user xác thực email họ nhập
+    const verificationToken = generateRandomToken();
     const verificationExpires = calculateTokenExpiration(
       config.jwt.emailVerificationTokenExpiresMinutes
     );
     const newAccountData = {
-      Email: email, // Dùng email người dùng nhập
+      Email: email,
       HashedPassword: null,
-      RoleID: Roles.STUDENT, // Mặc định là Student khi hoàn tất đăng ký kiểu này? Hay GV? -> Nên là STUDENT
-      Status: AccountStatus.PENDING_VERIFICATION, // *** Quan trọng: Chờ xác thực email đã nhập ***
+      RoleID: Roles.STUDENT,
+      Status: AccountStatus.PENDING_VERIFICATION,
       EmailVerificationToken: verificationToken,
       EmailVerificationExpires: verificationExpires,
       HasSocialLogin: true,
@@ -1015,8 +801,6 @@ const completeFacebookRegistration = async (accessToken, userProvidedEmail) => {
       transaction
     );
     const accountId = newAccountResult.AccountID;
-
-    // 6. Tạo UserProfiles
     const profileData = {
       AccountID: accountId,
       FullName: fullName || email.split('@')[0],
@@ -1026,8 +810,6 @@ const completeFacebookRegistration = async (accessToken, userProvidedEmail) => {
       profileData,
       transaction
     );
-
-    // 7. Tạo AuthMethods (FACEBOOK)
     await authRepository.createAuthMethodInTransaction(
       {
         AccountID: accountId,
@@ -1036,10 +818,7 @@ const completeFacebookRegistration = async (accessToken, userProvidedEmail) => {
       },
       transaction
     );
-
     await transaction.commit();
-
-    // 8. Gửi email xác thực đến địa chỉ email người dùng đã nhập
     try {
       await emailSender.sendVerificationEmail(
         email,
@@ -1054,9 +833,7 @@ const completeFacebookRegistration = async (accessToken, userProvidedEmail) => {
         `Failed to send verification email to ${email} during Facebook completion:`,
         emailError
       );
-      // Không throw lỗi, việc tạo tài khoản vẫn thành công về mặt kỹ thuật
     }
-
     logger.info(
       `Account ${accountId} created for Facebook user ${facebookId} with provided email ${email}. Awaiting email verification.`
     );
@@ -1071,7 +848,6 @@ const completeFacebookRegistration = async (accessToken, userProvidedEmail) => {
     );
     await transaction.rollback();
     if (error instanceof ApiError) throw error;
-    // Lỗi unique constraint có thể xảy ra nếu email được đăng ký trong lúc đang xử lý
     if (error.number === 2627 || error.number === 2601) {
       throw new ApiError(
         httpStatus.BAD_REQUEST,
@@ -1084,21 +860,11 @@ const completeFacebookRegistration = async (accessToken, userProvidedEmail) => {
     );
   }
 };
-
-/**
- * Change user's password.
- * @param {number} accountId - The ID of the user.
- * @param {string} currentPassword - The current password.
- * @param {string} newPassword - The new password.
- * @returns {Promise<void>}
- */
 const changePassword = async (accountId, currentPassword, newPassword) => {
   const account = await accountRepository.findAccountById(accountId);
   if (!account) {
-    // Điều này không nên xảy ra nếu user đã authenticate
     throw new ApiError(httpStatus.NOT_FOUND, 'Người dùng không tồn tại.');
   }
-
   const isPasswordMatch = await bcrypt.compare(
     currentPassword,
     account.PasswordHash
@@ -1109,19 +875,16 @@ const changePassword = async (accountId, currentPassword, newPassword) => {
       'Mật khẩu hiện tại không đúng.'
     );
   }
-
   if (currentPassword === newPassword) {
     throw new ApiError(
       httpStatus.BAD_REQUEST,
       'Mật khẩu mới không được trùng với mật khẩu hiện tại.'
     );
   }
-
   const hashedPassword = await bcrypt.hash(newPassword, 10);
   const updateResult = await accountRepository.updateAccountById(accountId, {
     PasswordHash: hashedPassword,
   });
-
   if (!updateResult || updateResult.rowsAffected[0] === 0) {
     logger.error(`Failed to update password in DB for accountId: ${accountId}`);
     throw new ApiError(
@@ -1130,10 +893,7 @@ const changePassword = async (accountId, currentPassword, newPassword) => {
     );
   }
   logger.info(`Password changed successfully for accountId: ${accountId}`);
-  // Có thể gửi email thông báo đổi mật khẩu thành công nếu muốn
-  // await emailService.sendPasswordChangedEmail(account.Email);
 };
-
 module.exports = {
   register,
   login,

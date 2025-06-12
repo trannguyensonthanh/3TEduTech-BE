@@ -6,21 +6,21 @@ const ApiError = require('../../core/errors/ApiError');
 const Roles = require('../../core/enums/Roles');
 const payoutMethodRepository = require('./payoutMethod.repository');
 const paymentMethodRepository = require('../payments/paymentMethod.repository');
-const balanceTransactionRepository = require('../financials/balanceTransaction.repository'); // Import
-const payoutRepository = require('../financials/payout.repository'); // Import
-const enrollmentRepository = require('../enrollments/enrollments.repository'); // Import
-const Currency = require('../../core/enums/Currency'); // Import
+const balanceTransactionRepository = require('../financials/balanceTransaction.repository');
+const payoutRepository = require('../financials/payout.repository');
+const enrollmentRepository = require('../enrollments/enrollments.repository');
+const Currency = require('../../core/enums/Currency');
 const { getConnection, sql } = require('../../database/connection');
 const logger = require('../../utils/logger');
 const { toCamelCaseObject } = require('../../utils/caseConverter');
 const PaymentMethod = require('../../core/enums/PaymentMethod');
+
 /**
  * Instructor lấy thông tin hồ sơ của mình (bao gồm cả phần private).
  * @param {number} accountId
  * @returns {Promise<object>}
  */
 const getMyInstructorProfile = async (accountId) => {
-  // Lấy cả UserProfile và InstructorProfile
   const userProfile = await userRepository.findUserProfileById(accountId);
   if (!userProfile || userProfile.RoleID !== Roles.INSTRUCTOR) {
     throw new ApiError(httpStatus.FORBIDDEN, 'Bạn không phải là giảng viên.');
@@ -28,15 +28,13 @@ const getMyInstructorProfile = async (accountId) => {
   const instructorProfile =
     await instructorRepository.findOrCreateInstructorProfile(accountId);
 
-  // Lấy skills và social links
   const skills = await instructorRepository.findInstructorSkills(accountId);
   const socialLinks =
     await instructorRepository.findInstructorSocialLinks(accountId);
 
-  // Kết hợp thông tin
   return {
-    ...userProfile, // Thông tin chung (FullName, Avatar, Email,...)
-    ...instructorProfile, // Thông tin riêng (Bio, Title, Bank Info,...) - Có thể trùng AccountID, CreatedAt, UpdatedAt
+    ...userProfile,
+    ...instructorProfile,
     skills,
     socialLinks,
   };
@@ -50,7 +48,7 @@ const getMyInstructorProfile = async (accountId) => {
  */
 const updateMyInstructorProfile = async (accountId, updateBody) => {
   const instructorProfileUpdates = {};
-  const instructorFields = ['professionalTitle', 'bio', 'aboutMe']; // Chỉ còn các trường này
+  const instructorFields = ['professionalTitle', 'bio', 'aboutMe'];
   instructorFields.forEach((field) => {
     let dbField = field.charAt(0).toUpperCase() + field.slice(1);
     if (field === 'professionalTitle') dbField = 'ProfessionalTitle';
@@ -61,14 +59,7 @@ const updateMyInstructorProfile = async (accountId, updateBody) => {
       instructorProfileUpdates[dbField] = updateBody[field];
     }
   });
-  // TODO: Validate bank info nếu cần (ví dụ: độ dài số TK)
 
-  // Cập nhật UserProfile (nếu có)
-  // if (Object.keys(userProfileUpdates).length > 0) {
-  //     await userRepository.updateUserProfileById(accountId, userProfileUpdates);
-  // }
-
-  // Cập nhật InstructorProfile
   if (Object.keys(instructorProfileUpdates).length > 0) {
     await instructorRepository.updateInstructorProfile(
       accountId,
@@ -76,7 +67,6 @@ const updateMyInstructorProfile = async (accountId, updateBody) => {
     );
   }
 
-  // Lấy lại profile đầy đủ sau khi cập nhật
   return getMyInstructorProfile(accountId);
 };
 
@@ -87,14 +77,11 @@ const updateMyInstructorProfile = async (accountId, updateBody) => {
  * @returns {Promise<object>} - Danh sách kỹ năng mới.
  */
 const addMySkill = async (accountId, skillId) => {
-  // Kiểm tra skill tồn tại
   const skill = await skillsRepository.findSkillById(skillId);
   if (!skill) {
     throw new ApiError(httpStatus.NOT_FOUND, 'Kỹ năng không tồn tại.');
   }
-  // Repo sẽ xử lý lỗi trùng lặp
   await instructorRepository.addInstructorSkill(accountId, skillId);
-  // Trả về danh sách kỹ năng mới
   return instructorRepository.findInstructorSkills(accountId);
 };
 
@@ -109,10 +96,6 @@ const removeMySkill = async (accountId, skillId) => {
     accountId,
     skillId
   );
-  if (deletedCount === 0) {
-    // Không báo lỗi nếu cố xóa skill không có? Hoặc báo lỗi?
-    // throw new ApiError(httpStatus.NOT_FOUND, 'Không tìm thấy kỹ năng này trong hồ sơ của bạn.');
-  }
   return instructorRepository.findInstructorSkills(accountId);
 };
 
@@ -124,13 +107,11 @@ const removeMySkill = async (accountId, skillId) => {
  * @returns {Promise<object>} - Danh sách social links mới.
  */
 const addOrUpdateMySocialLink = async (accountId, platform, url) => {
-  // Validate URL?
-  // Validate Platform? (có thể tạo enum)
   await instructorRepository.createOrUpdateSocialLink(
     accountId,
     platform.toUpperCase(),
     url
-  ); // Luôn lưu platform dạng uppercase
+  );
   return instructorRepository.findInstructorSocialLinks(accountId);
 };
 
@@ -163,43 +144,8 @@ const getInstructorPublicProfile = async (instructorId) => {
       'Không tìm thấy thông tin giảng viên.'
     );
   }
-  // Có thể tính toán thêm số liệu (rating, student count) ở đây
-  // profile.totalStudents = await ...
-  // profile.averageRating = await ...
   return toCamelCaseObject(profile);
 };
-
-// /**
-//  * Instructor cập nhật thông tin tài khoản ngân hàng.
-//  * @param {number} accountId
-//  * @param {object} bankInfo - { bankAccountNumber, bankName, bankAccountHolderName }
-//  * @returns {Promise<{BankAccountNumber: string, BankName: string, BankAccountHolderName: string}>} - Thông tin bank đã cập nhật.
-//  */
-// const updateMyBankInfo = async (accountId, bankInfo) => {
-//   // Validate đầu vào (độ dài, ký tự đặc biệt...) nếu cần
-//   const { bankAccountNumber, bankName, bankAccountHolderName } = bankInfo;
-//   if (!bankAccountNumber || !bankName || !bankAccountHolderName) {
-//     throw new ApiError(
-//       httpStatus.BAD_REQUEST,
-//       'Vui lòng cung cấp đầy đủ thông tin tài khoản ngân hàng.'
-//     );
-//   }
-
-//   const updateData = {
-//     BankAccountNumber: bankAccountNumber,
-//     BankName: bankName,
-//     BankAccountHolderName: bankAccountHolderName,
-//   };
-
-//   await instructorRepository.updateInstructorProfile(accountId, updateData);
-
-//   // Lấy lại thông tin bank đã cập nhật
-//   const updatedBankInfo =
-//     await instructorRepository.getInstructorBankInfo(accountId);
-//   return updatedBankInfo;
-// };
-
-// --- Payout Method Management ---
 
 /**
  * Instructor lấy danh sách phương thức thanh toán đã lưu.
@@ -217,7 +163,6 @@ const getMyPayoutMethods = async (accountId) => {
       parsedDetails = { error: 'Invalid JSON details' };
     }
 
-    // Che số tài khoản ngân hàng
     if (
       m.MethodID === PaymentMethod.BANK_TRANSFER &&
       parsedDetails.bankAccountNumber
@@ -225,13 +170,13 @@ const getMyPayoutMethods = async (accountId) => {
       const accNum = parsedDetails.bankAccountNumber.toString();
       parsedDetails.bankAccountNumberLast4 =
         accNum.length > 4 ? accNum.slice(-4) : accNum;
-      delete parsedDetails.bankAccountNumber; // Xóa số đầy đủ
+      delete parsedDetails.bankAccountNumber;
     }
 
     return {
       payoutMethodId: m.PayoutMethodID,
       methodId: m.MethodID,
-      methodName: m.MethodName, // Từ join trong repo
+      methodName: m.MethodName,
       details: parsedDetails,
       isPrimary: m.IsPrimary,
       status: m.Status,
@@ -262,7 +207,6 @@ const updateMyPayoutMethodDetails = async (
     );
   }
 
-  // Validate cấu trúc 'newDetails' dựa trên existingMethod.MethodID
   if (existingMethod.MethodID === PaymentMethod.BANK_TRANSFER) {
     if (
       !newDetails ||
@@ -275,7 +219,6 @@ const updateMyPayoutMethodDetails = async (
         'Thiếu thông tin tài khoản ngân hàng.'
       );
     }
-    // Validate thêm nếu cần
   } else if (existingMethod.MethodID === PaymentMethod.PAYPAL) {
     if (
       !newDetails ||
@@ -309,8 +252,7 @@ const updateMyPayoutMethodDetails = async (
 const addMyPayoutMethod = async (accountId, data) => {
   const { methodId, details, isPrimary } = data;
 
-  // Kiểm tra MethodID hợp lệ
-  const paymentMethod = await paymentMethodRepository.findMethodById(methodId); // Cần tạo hàm này
+  const paymentMethod = await paymentMethodRepository.findMethodById(methodId);
   if (!paymentMethod) {
     throw new ApiError(
       httpStatus.BAD_REQUEST,
@@ -318,10 +260,6 @@ const addMyPayoutMethod = async (accountId, data) => {
     );
   }
 
-  // Validate cấu trúc 'details' dựa trên methodId (QUAN TRỌNG)
-  // Ví dụ: Nếu là BANK_TRANSFER, details phải có bankAccountNumber, bankName,...
-  // Nếu là PAYPAL, details phải có email.
-  // --> Thêm logic validation ở đây
   if (methodId === 'BANK_TRANSFER') {
     if (
       !details ||
@@ -334,39 +272,36 @@ const addMyPayoutMethod = async (accountId, data) => {
         'Thiếu thông tin tài khoản ngân hàng.'
       );
     }
-    // Có thể validate thêm định dạng số tài khoản,...
   } else if (methodId === 'PAYPAL') {
     if (!details || !details.email || !/\S+@\S+\.\S+/.test(details.email)) {
-      // Check email đơn giản
       throw new ApiError(
         httpStatus.BAD_REQUEST,
         'Cần cung cấp email PayPal hợp lệ.'
       );
     }
-  } // Thêm các phương thức khác...
+  }
 
   const pool = await getConnection();
   const transaction = new sql.Transaction(pool);
   try {
     await transaction.begin();
 
-    // Nếu đặt làm primary, bỏ primary cũ trước
     if (isPrimary) {
       await payoutMethodRepository.setPrimaryPayoutMethod(
         accountId,
         0,
         transaction
-      ); // Truyền ID 0 để bỏ hết primary cũ
+      );
     }
 
     const newMethodData = {
       AccountID: accountId,
       MethodID: methodId,
-      Details: JSON.stringify(details), // Lưu dạng JSON string
-      IsPrimary: !!isPrimary, // Chuyển thành boolean
-      Status: 'ACTIVE', // Hoặc REQUIRES_VERIFICATION tùy logic
+      Details: JSON.stringify(details),
+      IsPrimary: !!isPrimary,
+      Status: 'ACTIVE',
     };
-    await payoutMethodRepository.addPayoutMethod(newMethodData, transaction); // Thêm vào DB
+    await payoutMethodRepository.addPayoutMethod(newMethodData, transaction);
 
     await transaction.commit();
   } catch (error) {
@@ -379,7 +314,6 @@ const addMyPayoutMethod = async (accountId, data) => {
     );
   }
 
-  // Trả về danh sách mới
   return getMyPayoutMethods(accountId);
 };
 
@@ -393,7 +327,6 @@ const addMyPayoutMethod = async (accountId, data) => {
 const updateMyPayoutMethod = async (accountId, payoutMethodId, data) => {
   const { details, status, isPrimary } = data;
 
-  // Kiểm tra xem phương thức có tồn tại và thuộc về user không
   const existingMethod =
     await payoutMethodRepository.findPayoutMethodById(payoutMethodId);
   if (!existingMethod || existingMethod.AccountID !== accountId) {
@@ -403,9 +336,7 @@ const updateMyPayoutMethod = async (accountId, payoutMethodId, data) => {
     );
   }
 
-  // Validate details nếu được cung cấp
   if (details) {
-    // Validate cấu trúc 'details' dựa trên existingMethod.MethodID
     if (existingMethod.MethodID === 'BANK_TRANSFER') {
       if (
         !details.bankAccountNumber ||
@@ -417,7 +348,6 @@ const updateMyPayoutMethod = async (accountId, payoutMethodId, data) => {
           'Thiếu thông tin tài khoản ngân hàng.'
         );
       }
-      // Có thể thêm logic kiểm tra định dạng số tài khoản, tên ngân hàng, v.v.
     } else if (existingMethod.MethodID === 'PAYPAL') {
       if (!details.email || !/\S+@\S+\.\S+/.test(details.email)) {
         throw new ApiError(
@@ -426,7 +356,6 @@ const updateMyPayoutMethod = async (accountId, payoutMethodId, data) => {
         );
       }
     } else {
-      // Thêm các phương thức khác nếu cần
       throw new ApiError(
         httpStatus.BAD_REQUEST,
         'Phương thức thanh toán không được hỗ trợ.'
@@ -434,9 +363,7 @@ const updateMyPayoutMethod = async (accountId, payoutMethodId, data) => {
     }
   }
 
-  // Validate status nếu được cung cấp
   if (status && !['ACTIVE', 'INACTIVE'].includes(status)) {
-    // User chỉ có thể đặt active/inactive?
     throw new ApiError(httpStatus.BAD_REQUEST, 'Trạng thái không hợp lệ.');
   }
 
@@ -445,7 +372,6 @@ const updateMyPayoutMethod = async (accountId, payoutMethodId, data) => {
   try {
     await transaction.begin();
 
-    // Nếu đặt làm primary, xử lý primary cũ/mới
     if (isPrimary === true && !existingMethod.IsPrimary) {
       await payoutMethodRepository.setPrimaryPayoutMethod(
         accountId,
@@ -453,16 +379,12 @@ const updateMyPayoutMethod = async (accountId, payoutMethodId, data) => {
         transaction
       );
     } else if (isPrimary === false && existingMethod.IsPrimary) {
-      // Không cho phép bỏ primary nếu đây là cái duy nhất? Hoặc tự động chọn cái khác?
-      // Tạm thời cho phép bỏ primary
-      // Nếu cần logic phức tạp hơn (ví dụ: phải có ít nhất 1 primary), xử lý ở đây
+      //
     }
 
     const updateData = {};
     if (details) updateData.Details = JSON.stringify(details);
     if (status) updateData.Status = status;
-    // IsPrimary đã được xử lý riêng bởi setPrimaryPayoutMethod nếu isPrimary=true
-    // Chỉ cập nhật IsPrimary thành false nếu user yêu cầu và nó đang là true
     if (isPrimary === false && existingMethod.IsPrimary) {
       updateData.IsPrimary = false;
     }
@@ -499,7 +421,6 @@ const updateMyPayoutMethod = async (accountId, payoutMethodId, data) => {
  * @returns {Promise<object>} - Danh sách phương thức mới.
  */
 const setMyPrimaryPayoutMethod = async (accountId, payoutMethodId) => {
-  // Kiểm tra phương thức tồn tại và thuộc về user
   const method =
     await payoutMethodRepository.findPayoutMethodById(payoutMethodId);
   if (!method || method.AccountID !== accountId) {
@@ -537,7 +458,8 @@ const setMyPrimaryPayoutMethod = async (accountId, payoutMethodId) => {
     );
   }
 
-  return getMyPayoutMethods(accountId);
+  const methods = await getMyPayoutMethods(accountId);
+  return methods.find((m) => m.isPrimary === true) || null;
 };
 
 /**
@@ -555,7 +477,6 @@ const deleteMyPayoutMethod = async (accountId, payoutMethodId) => {
       'Không tìm thấy phương thức thanh toán.'
     );
   }
-  // Không cho xóa phương thức chính?
   if (method.IsPrimary) {
     throw new ApiError(
       httpStatus.BAD_REQUEST,
@@ -574,23 +495,12 @@ const deleteMyPayoutMethod = async (accountId, payoutMethodId) => {
  * @returns {Promise<InstructorListResponse>}
  */
 const queryInstructors = async (filterOptions, paginationOptions) => {
-  // Giả sử repository sẽ trả về đúng cấu trúc InstructorListResponse
   const result = await instructorRepository.findAllInstructors(
     filterOptions,
     paginationOptions
   );
   return toCamelCaseObject(result);
 };
-
-// /**
-//  * Get instructor by slug or ID.
-//  * @param {string | number} identifier
-//  * @returns {Promise<InstructorListItem | null>}
-//  */
-// const getInstructorBySlugOrId = async (identifier) => {
-//   const instructor = await instructorRepository.findInstructorBySlugOrId(identifier);
-//   return instructor;
-// };
 
 const getStudentsOfInstructor = async (instructorId, options) => {
   const {
@@ -650,13 +560,13 @@ const getMyFinancialOverview = async (instructorId) => {
     ]);
 
     return {
-      currentBalance: parseFloat(currentBalance.toString()), // Đảm bảo là số
+      currentBalance: parseFloat(currentBalance.toString()),
       totalLifetimeEarnings: parseFloat(totalLifetimeEarnings.toString()),
       pendingPayoutsAmount: parseFloat(pendingPayoutsAmount.toString()),
-      minWithdrawalAmount: 1000000, // Giả sử là 1 triệu VND
-      revenueSharePercentage: 0.7, // Giả sử là 70%
+      minWithdrawalAmount: 100000,
+      revenueSharePercentage: 0.7,
       totalStudentsLifetime,
-      currencyId: Currency.VND, // Giả sử VND là tiền tệ chính
+      currencyId: Currency.VND,
     };
   } catch (error) {
     logger.error(
@@ -678,8 +588,6 @@ module.exports = {
   addOrUpdateMySocialLink,
   removeMySocialLink,
   getInstructorPublicProfile,
-
-  // Payout Methods
   getMyPayoutMethods,
   updateMyPayoutMethodDetails,
   addMyPayoutMethod,
@@ -687,7 +595,6 @@ module.exports = {
   setMyPrimaryPayoutMethod,
   deleteMyPayoutMethod,
   queryInstructors,
-  // getInstructorBySlugOrId,
   getStudentsOfInstructor,
   getMyFinancialOverview,
 };

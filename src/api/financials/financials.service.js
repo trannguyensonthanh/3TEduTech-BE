@@ -1,9 +1,9 @@
 // File: src/api/financials/financials.service.js
 const { isNaN } = require('lodash');
 const httpStatus = require('http-status').status;
-
+const { Decimal } = require('decimal.js');
 const payoutRepository = require('./payout.repository');
-const userRepository = require('../users/users.repository'); // Lấy profile instructor
+const userRepository = require('../users/users.repository');
 const settingRepository = require('../settings/settings.repository');
 const settingsService = require('../settings/settings.service');
 const ApiError = require('../../core/errors/ApiError');
@@ -18,146 +18,89 @@ const authRepository = require('../auth/auth.repository');
 const Roles = require('../../core/enums/Roles');
 const balanceTransactionRepository = require('./balanceTransaction.repository');
 const payoutMethodRepository = require('../instructors/payoutMethod.repository');
+const exchangeRateRepository = require('../exchangeRates/exchangeRates.repository');
+const exchangeRateService = require('../exchangeRates/exchangeRates.service');
+const { toCamelCaseObject } = require('../../utils/caseConverter');
 
 /**
- * Lấy số dư khả dụng của giảng viên hiện tại.
+ * Lấy số dư khả dụng và các tùy chọn rút tiền cho giảng viên.
  * @param {number} instructorId
- * @returns {Promise<number>}
+ * @returns {Promise<AvailableBalanceResponse>}
  */
 const getMyAvailableBalance = async (instructorId) => {
-  return balanceTransactionRepository.getCurrentBalance(instructorId);
+  const currentBalanceVND =
+    await balanceTransactionRepository.getCurrentBalance(instructorId);
+  const balanceDecimal = new Decimal(currentBalanceVND);
+
+  const response = {
+    baseBalance: {
+      currencyId: 'VND',
+      amount: balanceDecimal.toDP(4).toNumber(),
+    },
+    payoutOptions: [],
+  };
+
+  const minWithdrawalVNDStr = await settingsService.getSettingValue(
+    'MinWithdrawalAmountVND',
+    '250000'
+  );
+  const minWithdrawalVND = new Decimal(minWithdrawalVNDStr);
+  logger.debug('minWithdrawalVND:', minWithdrawalVND.toString());
+  response.payoutOptions.push({
+    currencyId: 'VND',
+    minWithdrawal: minWithdrawalVND.toNumber(),
+    maxWithdrawal: balanceDecimal.isNegative() ? 0 : balanceDecimal.toNumber(),
+  });
+
+  try {
+    const rateRecord = await exchangeRateRepository.findLatestRate(
+      'USD',
+      'VND'
+    );
+    if (rateRecord) {
+      const usdToVndRate = new Decimal(rateRecord.Rate.toString());
+
+      const minWithdrawalUSDStr = await settingsService.getSettingValue(
+        'MinWithdrawalAmountUSD',
+        '10'
+      );
+      const minWithdrawalUSD = new Decimal(minWithdrawalUSDStr);
+
+      const maxWithdrawalUSD = balanceDecimal.isNegative()
+        ? new Decimal(0)
+        : balanceDecimal.dividedBy(usdToVndRate);
+
+      response.payoutOptions.push({
+        currencyId: 'USD',
+        minWithdrawal: minWithdrawalUSD.toNumber(),
+        maxWithdrawal: maxWithdrawalUSD.toDP(2).toNumber(),
+        exchangeRate: usdToVndRate.toDP(4).toNumber(),
+        rateSource: rateRecord.Source,
+      });
+    }
+  } catch (error) {
+    logger.warn(
+      `Could not calculate USD payout option for instructor ${instructorId}: ${error.message}`
+    );
+  }
+
+  return response;
 };
-
-// /**
-//  * Giảng viên tạo yêu cầu rút tiền.
-//  * @param {number} instructorId
-//  * @param {object} requestData - { requestedAmount, requestedCurrencyId, paymentMethodId (BANK_TRANSFER), instructorNotes }
-//  * @returns {Promise<object>} - WithdrawalRequest vừa tạo.
-//  */
-// const requestWithdrawal = async (instructorId, requestData) => {
-//   const {
-//     requestedAmount,
-//     requestedCurrencyId,
-//     paymentMethodId,
-//     instructorNotes,
-//   } = requestData;
-
-//   // 1. Kiểm tra phương thức thanh toán hợp lệ (vd: chỉ cho BANK_TRANSFER)
-//   if (paymentMethodId !== PaymentMethod.BANK_TRANSFER) {
-//     throw new ApiError(
-//       httpStatus.BAD_REQUEST,
-//       'Phương thức rút tiền không được hỗ trợ.'
-//     );
-//   }
-//   // Kiểm tra currency hợp lệ (vd: chỉ cho VND)
-//   if (requestedCurrencyId !== Currency.VND) {
-//     throw new ApiError(
-//       httpStatus.BAD_REQUEST,
-//       'Loại tiền tệ rút không được hỗ trợ.'
-//     );
-//   }
-
-//   // 2. *** Lấy thông tin phương thức thanh toán đã chọn từ InstructorPayoutMethods ***
-//   const payoutMethod = await payoutMethodRepository.findSpecificPayoutMethod(
-//     instructorId,
-//     paymentMethodId
-//   );
-//   if (!payoutMethod || payoutMethod.Status !== 'ACTIVE') {
-//     throw new ApiError(
-//       httpStatus.BAD_REQUEST,
-//       `Phương thức thanh toán ${paymentMethodId} không hợp lệ hoặc chưa được kích hoạt.`
-//     );
-//   }
-//   // Lấy chi tiết JSON từ payoutMethod.Details
-//   const payoutDetailsSnapshot = payoutMethod.Details;
-
-//   // 3. Lấy số dư khả dụng và kiểm tra
-//   const availableBalance =
-//     await balanceTransactionRepository.getCurrentBalance(instructorId);
-//   const minWithdrawalSetting = await settingRepository.findSettingByKey(
-//     `MinWithdrawalAmount${requestedCurrencyId}`
-//   );
-//   const minWithdrawalAmount = parseFloat(
-//     minWithdrawalSetting?.SettingValue || '0'
-//   );
-
-//   if (requestedAmount <= 0) {
-//     throw new ApiError(
-//       httpStatus.BAD_REQUEST,
-//       'Số tiền yêu cầu rút phải lớn hơn 0.'
-//     );
-//   }
-//   if (requestedAmount < minWithdrawalAmount) {
-//     throw new ApiError(
-//       httpStatus.BAD_REQUEST,
-//       `Số tiền rút tối thiểu là ${minWithdrawalAmount} ${requestedCurrencyId}.`
-//     );
-//   }
-//   if (requestedAmount > availableBalance) {
-//     throw new ApiError(
-//       httpStatus.BAD_REQUEST,
-//       `Số dư khả dụng không đủ (${availableBalance} ${requestedCurrencyId}).`
-//     );
-//   }
-
-//   // 4. Tạo yêu cầu rút tiền
-//   const newRequestData = {
-//     InstructorID: instructorId,
-//     RequestedAmount: requestedAmount,
-//     RequestedCurrencyID: requestedCurrencyId,
-//     PaymentMethodID: paymentMethodId,
-//     PayoutDetailsSnapshot: payoutDetailsSnapshot,
-//     Status: WithdrawalStatus.PENDING,
-//     InstructorNotes: instructorNotes,
-//   };
-//   const withdrawalRequest =
-//     await payoutRepository.createWithdrawalRequest(newRequestData);
-
-//   // TODO: Gửi thông báo cho Admin
-//   try {
-//     const instructorProfile =
-//       await userRepository.findUserProfileById(instructorId); // Lấy tên instructor
-//     const message = `Giảng viên ${
-//       instructorProfile?.FullName || instructorId
-//     } vừa tạo yêu cầu rút tiền #${withdrawalRequest.RequestID}.`;
-//     const adminIds = await authRepository.findAccountIdsByRoles([
-//       Roles.ADMIN,
-//       Roles.SUPERADMIN,
-//     ]);
-//     if (adminIds && adminIds.length > 0) {
-//       adminIds.forEach((adminIdObj) => {
-//         // Giả sử hàm trả về mảng object { AccountID }
-//         notificationService.createNotification(
-//           adminIdObj.AccountID,
-//           'WITHDRAWAL_REQUESTED',
-//           message,
-//           { type: 'WithdrawalRequest', id: withdrawalRequest.RequestID }
-//         );
-//       });
-//     } else {
-//       logger.warn(
-//         'No Admins/SuperAdmins found to notify about new withdrawal request.'
-//       );
-//     }
-//   } catch (notifyError) {
-//     logger.error(
-//       `Failed to send withdrawal requested notification for request ${withdrawalRequest.RequestID}:`,
-//       notifyError
-//     );
-//   }
-//   return withdrawalRequest;
-// };
 
 /**
  * Giảng viên tạo yêu cầu rút tiền.
  * @param {number} instructorId
- * @param {object} requestData - { amount, instructorPayoutMethodId, notes }
+ * @param {object} requestData - { requestedAmount, requestedCurrencyId, instructorPayoutMethodId, notes }
  * @returns {Promise<object>} - WithdrawalRequest vừa tạo.
  */
 const requestWithdrawal = async (instructorId, requestData) => {
-  const { amount, instructorPayoutMethodId, notes } = requestData;
+  const {
+    requestedAmount,
+    requestedCurrencyId,
+    instructorPayoutMethodId,
+    notes,
+  } = requestData;
 
-  // 1. Lấy chi tiết phương thức thanh toán mà instructor đã chọn
   const selectedPayoutMethod =
     await payoutMethodRepository.findPayoutMethodByIdAndAccountId(
       instructorPayoutMethodId,
@@ -170,60 +113,59 @@ const requestWithdrawal = async (instructorId, requestData) => {
     );
   }
 
-  // 2. Xác định CurrencyID (ví dụ: luôn là VND cho thị trường VN)
-  // Hoặc có thể lấy từ selectedPayoutMethod nếu bảng đó có lưu CurrencyID cho từng phương thức
-  const requestedCurrencyId = Currency.VND; // Mặc định
-
-  // 3. Lấy thông tin tài khoản ngân hàng/paypal từ selectedPayoutMethod.Details
-  // PayoutDetailsSnapshot sẽ là JSON string của selectedPayoutMethod.Details
-  const payoutDetailsSnapshot = selectedPayoutMethod.Details; // Đây đã là JSON string từ DB
-
-  // 4. Lấy số dư khả dụng và kiểm tra
-  const availableBalance =
+  const availableBalanceVND =
     await balanceTransactionRepository.getCurrentBalance(instructorId);
-  const minWithdrawalSettingKey = `MinWithdrawalAmount${requestedCurrencyId}`; // vd: MinWithdrawalAmountVND
+
+  let requestedAmountInBaseCurrency = new Decimal(0);
+  const requestedAmountDecimal = new Decimal(requestedAmount);
+
+  if (requestedCurrencyId === 'VND') {
+    requestedAmountInBaseCurrency = requestedAmountDecimal;
+  } else if (requestedCurrencyId === 'USD') {
+    try {
+      const rate = await exchangeRateService.getLatestRate('USD', 'VND');
+      requestedAmountInBaseCurrency = requestedAmountDecimal.times(rate);
+    } catch (error) {
+      throw new ApiError(
+        httpStatus.SERVICE_UNAVAILABLE,
+        'Không thể lấy tỷ giá để xử lý yêu cầu rút USD. Vui lòng thử lại sau.'
+      );
+    }
+  } else {
+    throw new ApiError(
+      httpStatus.BAD_REQUEST,
+      `Loại tiền tệ rút '${requestedCurrencyId}' không được hỗ trợ.`
+    );
+  }
+
+  const minWithdrawalSettingKey = `MinWithdrawalAmount${requestedCurrencyId}`;
+  const minWithdrawalDefault = requestedCurrencyId === 'USD' ? '10' : '250000';
   const minWithdrawalSetting = await settingsService.getSettingValue(
     minWithdrawalSettingKey,
-    '0'
-  ); // Dùng settingsService
-  const minWithdrawalAmount = parseFloat(minWithdrawalSetting);
+    minWithdrawalDefault
+  );
+  const minWithdrawalAmount = new Decimal(minWithdrawalSetting);
 
-  if (isNaN(minWithdrawalAmount)) {
-    logger.error(
-      `Invalid MinWithdrawalAmount setting for ${requestedCurrencyId}. Key: ${minWithdrawalSettingKey}`
-    );
+  if (requestedAmountDecimal.lessThan(minWithdrawalAmount)) {
     throw new ApiError(
-      httpStatus.INTERNAL_SERVER_ERROR,
-      'Lỗi cấu hình số tiền rút tối thiểu.'
+      httpStatus.BAD_REQUEST,
+      `Số tiền rút tối thiểu là ${minWithdrawalAmount.toString()} ${requestedCurrencyId}.`
     );
   }
 
-  if (amount <= 0) {
+  if (requestedAmountInBaseCurrency.greaterThan(availableBalanceVND)) {
     throw new ApiError(
       httpStatus.BAD_REQUEST,
-      'Số tiền yêu cầu rút phải lớn hơn 0.'
-    );
-  }
-  if (amount < minWithdrawalAmount) {
-    throw new ApiError(
-      httpStatus.BAD_REQUEST,
-      `Số tiền rút tối thiểu là ${minWithdrawalAmount.toLocaleString()} ${requestedCurrencyId}.`
-    );
-  }
-  if (amount > availableBalance) {
-    throw new ApiError(
-      httpStatus.BAD_REQUEST,
-      `Số dư khả dụng không đủ (${availableBalance.toLocaleString()} ${requestedCurrencyId}).`
+      `Số dư khả dụng không đủ. Bạn chỉ có thể rút tối đa tương đương ${new Decimal(availableBalanceVND).toDP(0).toString()} VND.`
     );
   }
 
-  // 5. Tạo yêu cầu rút tiền
   const newRequestData = {
     InstructorID: instructorId,
-    RequestedAmount: amount,
+    RequestedAmount: requestedAmount,
     RequestedCurrencyID: requestedCurrencyId,
-    PaymentMethodID: selectedPayoutMethod.MethodID, // Lấy MethodID (BANK_TRANSFER, PAYPAL) từ PayoutMethod đã chọn
-    PayoutDetailsSnapshot: payoutDetailsSnapshot, // Lưu JSON string chi tiết của phương thức
+    PaymentMethodID: selectedPayoutMethod.MethodID,
+    PayoutDetailsSnapshot: selectedPayoutMethod.Details,
     Status: WithdrawalStatus.PENDING,
     InstructorNotes: notes,
   };
@@ -282,7 +224,6 @@ const reviewWithdrawalRequest = async (
       'Không tìm thấy yêu cầu rút tiền.'
     );
   }
-  // Chỉ xử lý yêu cầu đang chờ
   if (request.Status !== WithdrawalStatus.PENDING) {
     throw new ApiError(httpStatus.BAD_REQUEST, 'Yêu cầu này đã được xử lý.');
   }
@@ -292,7 +233,7 @@ const reviewWithdrawalRequest = async (
   let notifyMessage = '';
 
   if (decision === WithdrawalStatus.APPROVED) {
-    newStatus = WithdrawalStatus.PROCESSING; // Chuyển sang Processing chờ chi trả
+    newStatus = WithdrawalStatus.PROCESSING;
     notifyType = 'WITHDRAWAL_APPROVED';
     notifyMessage = `Yêu cầu rút tiền #${requestId} của bạn đã được phê duyệt và đang chờ xử lý chi trả.`;
   } else if (decision === WithdrawalStatus.REJECTED) {
@@ -313,18 +254,14 @@ const reviewWithdrawalRequest = async (
     let newPayoutId = null;
 
     if (newStatus === WithdrawalStatus.PROCESSING) {
-      // Chỉ xử lý thêm khi APPROVED
-      // 1. KIỂM TRA LẠI SỐ DƯ tại thời điểm duyệt
       const currentBalance =
         await balanceTransactionRepository.getCurrentBalance(
           request.InstructorID,
           transaction
         );
       if (request.RequestedAmount > currentBalance) {
-        // Nếu không đủ tiền, tự động Reject và rollback
-        await transaction.rollback(); // Hủy transaction hiện tại
+        await transaction.rollback();
 
-        // Cập nhật request thành REJECTED (ngoài transaction)
         const rejectUpdateData = {
           Status: WithdrawalStatus.REJECTED,
           AdminID: adminUser.id,
@@ -339,20 +276,17 @@ const reviewWithdrawalRequest = async (
           `Withdrawal request ${requestId} auto-rejected due to insufficient balance at approval time.`
         );
 
-        // Cập nhật lại thông báo
         notifyType = 'WITHDRAWAL_REJECTED';
         notifyMessage = `Yêu cầu rút tiền #${requestId} của bạn đã bị từ chối. Lý do: Số dư khả dụng không đủ tại thời điểm duyệt.`;
-        // --> Đi thẳng xuống phần gửi thông báo bên ngoài try...catch
       } else {
-        // 2. TẠO BẢN GHI PAYOUT (Status PENDING)
         const payoutData = {
           InstructorID: request.InstructorID,
-          Amount: request.RequestedAmount, // Số tiền bằng số tiền yêu cầu
+          Amount: request.RequestedAmount,
           CurrencyID: request.RequestedCurrencyID,
           PaymentMethodID: request.PaymentMethodID,
           PayoutDetails: request.PayoutDetailsSnapshot,
-          PayoutStatusID: PayoutStatus.PENDING, // Chờ admin thực hiện chi trả
-          RequestedAt: request.CreatedAt, // Lấy thời gian từ request gốc
+          PayoutStatusID: PayoutStatus.PENDING,
+          RequestedAt: request.CreatedAt,
           AdminID: adminUser.id,
           AdminNote: adminNotes,
         };
@@ -360,15 +294,14 @@ const reviewWithdrawalRequest = async (
           payoutData,
           transaction
         );
-        newPayoutId = newPayout.PayoutID; // Lưu lại ID để liên kết
+        newPayoutId = newPayout.PayoutID;
 
-        // 3. CẬP NHẬT WITHDRAWAL REQUEST
         const updateRequestData = {
-          Status: newStatus, // PROCESSING
+          Status: newStatus,
           AdminID: adminUser.id,
           AdminNotes: adminNotes,
           ProcessedAt: new Date(),
-          PayoutID: newPayoutId, // Liên kết với Payout vừa tạo
+          PayoutID: newPayoutId,
         };
         updatedRequest = await payoutRepository.updateWithdrawalRequestStatus(
           requestId,
@@ -382,14 +315,12 @@ const reviewWithdrawalRequest = async (
         );
       }
     } else {
-      // Trường hợp REJECTED
-      // Chỉ cập nhật Withdrawal Request status
       const updateRequestData = {
-        Status: newStatus, // REJECTED
+        Status: newStatus,
         AdminID: adminUser.id,
         AdminNotes: adminNotes,
         ProcessedAt: new Date(),
-        PayoutID: null, // Đảm bảo PayoutID là null
+        PayoutID: null,
       };
       updatedRequest = await payoutRepository.updateWithdrawalRequestStatus(
         requestId,
@@ -402,10 +333,8 @@ const reviewWithdrawalRequest = async (
       );
     }
 
-    // Gửi thông báo (sau khi transaction thành công hoặc reject xong)
     try {
       if (notifyType && updatedRequest) {
-        // Chỉ gửi nếu có type và request đã được cập nhật
         await notificationService.createNotification(
           updatedRequest.InstructorID,
           notifyType,
@@ -420,15 +349,12 @@ const reviewWithdrawalRequest = async (
       );
     }
 
-    return updatedRequest; // Trả về request đã cập nhật
+    return updatedRequest;
   } catch (error) {
     logger.error(`Error reviewing withdrawal request ${requestId}:`, error);
-    // Rollback nếu transaction chưa được commit (ví dụ lỗi khi tạo Payout)
     if (transaction.rolledBack === false) {
-      // Kiểm tra trạng thái trước khi rollback lại
       await transaction.rollback();
     }
-    // Ném lỗi nếu không phải là lỗi số dư đã xử lý
     if (
       !(
         error instanceof ApiError &&
@@ -441,68 +367,9 @@ const reviewWithdrawalRequest = async (
         'Xử lý yêu cầu rút tiền thất bại.'
       );
     }
-    // Nếu là lỗi số dư đã xử lý thì trả về updatedRequest (đã bị reject)
     return payoutRepository.findWithdrawalRequestById(requestId);
   }
 };
-
-// const reviewWithdrawalRequest = async (
-//   requestId,
-//   decision,
-//   adminUser,
-//   adminNotes = null
-// ) => {
-//   // ... (lấy request, kiểm tra status)
-
-//   let updatedRequest; // Biến để lưu kết quả cuối cùng
-
-//   if (decision === WithdrawalStatus.APPROVED) {
-//       // ... (logic xử lý duyệt, tạo Payout, link Split trong transaction)
-//       // *** Sau khi commit transaction thành công ***
-//       updatedRequest = await payoutRepository.findWithdrawalRequestById(requestId); // Lấy lại request đã update
-//       logger.info(`Withdrawal request ${requestId} approved. Payout ${updatedRequest.PayoutID} created.`);
-
-//       // *** Gửi thông báo cho Instructor ***
-//       try {
-//           const recipientId = updatedRequest.InstructorID;
-//           const message = `Yêu cầu rút tiền #${requestId} của bạn đã được phê duyệt và đang chờ xử lý chi trả.`;
-//           await notificationService.createNotification(
-//               recipientId,
-//               'WITHDRAWAL_APPROVED',
-//               message,
-//               { type: 'WithdrawalRequest', id: requestId }
-//           );
-//       } catch(notifyError) {
-//           logger.error(`Failed to send withdrawal approved notification for request ${requestId}:`, notifyError);
-//       }
-//       // *** Kết thúc phần gửi thông báo ***
-
-//   } else if (decision === WithdrawalStatus.REJECTED) {
-//       // ... (logic cập nhật status thành REJECTED)
-//       updatedRequest = await payoutRepository.updateWithdrawalRequestStatus(requestId, updateData);
-//       logger.info(`Withdrawal request ${requestId} rejected by admin ${adminUser.id}.`);
-
-//       // *** Gửi thông báo cho Instructor ***
-//        try {
-//           const recipientId = updatedRequest.InstructorID;
-//           const message = `Yêu cầu rút tiền #${requestId} của bạn đã bị từ chối.${adminNotes ? ` Lý do: ${adminNotes}` : ''}`;
-//           await notificationService.createNotification(
-//               recipientId,
-//               'WITHDRAWAL_REJECTED',
-//               message,
-//               { type: 'WithdrawalRequest', id: requestId }
-//           );
-//       } catch(notifyError) {
-//           logger.error(`Failed to send withdrawal rejected notification for request ${requestId}:`, notifyError);
-//       }
-//       // *** Kết thúc phần gửi thông báo ***
-
-//   } else {
-//       throw new ApiError(httpStatus.BAD_REQUEST, "Quyết định không hợp lệ.");
-//   }
-
-//   return updatedRequest; // Trả về request đã cập nhật
-// };
 
 /**
  * Admin lấy danh sách các Payouts (có thể lọc).
@@ -514,7 +381,7 @@ const getPayouts = async (filters, options) => {
   const { page = 1, limit = 10 } = options;
   const result = await payoutRepository.findAllPayouts(filters, options);
   return {
-    payouts: result.payouts,
+    payouts: toCamelCaseObject(result.payouts),
     total: result.total,
     page: parseInt(page, 10),
     limit: parseInt(limit, 10),
@@ -540,12 +407,10 @@ const processPayoutExecution = async (payoutId, executionData, adminUser) => {
     adminNotes,
   } = executionData;
 
-  // 1. Lấy thông tin Payout
   const payout = await payoutRepository.findPayoutById(payoutId);
   if (!payout) {
     throw new ApiError(httpStatus.NOT_FOUND, 'Không tìm thấy yêu cầu chi trả.');
   }
-  // Chỉ xử lý các Payout đang chờ (PENDING) hoặc đang xử lý (PROCESSING)
   if (
     ![PayoutStatus.PENDING, PayoutStatus.PROCESSING].includes(
       payout.PayoutStatusID
@@ -556,7 +421,6 @@ const processPayoutExecution = async (payoutId, executionData, adminUser) => {
       `Không thể xử lý yêu cầu chi trả ở trạng thái ${payout.PayoutStatusID}.`
     );
   }
-  // Validate status mới
   if (![PayoutStatus.PAID, PayoutStatus.FAILED].includes(status)) {
     throw new ApiError(
       httpStatus.BAD_REQUEST,
@@ -564,39 +428,34 @@ const processPayoutExecution = async (payoutId, executionData, adminUser) => {
     );
   }
 
-  // 2. Chuẩn bị dữ liệu cập nhật cho Payouts
   const payoutUpdateData = {
     PayoutStatusID: status,
-    ProcessedAt: payout.ProcessedAt || new Date(), // Ghi nhận thời điểm bắt đầu xử lý nếu chưa có
-    CompletedAt: completedAt || new Date(), // Thời điểm hoàn thành/thất bại
-    AdminID: adminUser.id, // Ghi nhận admin xử lý lần cuối
-    AdminNote: adminNotes || payout.AdminNote, // Có thể ghi đè note cũ
+    ProcessedAt: payout.ProcessedAt || new Date(),
+    CompletedAt: completedAt || new Date(),
+    AdminID: adminUser.id,
+    AdminNote: adminNotes || payout.AdminNote,
     ...(actualAmount && { ActualAmount: actualAmount }),
     ...(actualCurrencyId && { ActualCurrencyID: actualCurrencyId }),
     ...(exchangeRate && { ExchangeRate: exchangeRate }),
     ...(fee && { Fee: fee }),
   };
 
-  // Bắt đầu transaction (nếu cần cập nhật nhiều bảng)
   const pool = await getConnection();
   const transaction = new sql.Transaction(pool);
   try {
     await transaction.begin();
 
-    // 3. Cập nhật bản ghi Payouts
     const updatedPayout = await payoutRepository.updatePayoutExecutionStatus(
       payoutId,
       payoutUpdateData,
-      transaction // Truyền transaction
+      transaction
     );
     if (!updatedPayout)
       throw new Error('Cập nhật trạng thái chi trả thất bại.');
 
-    // 4. Nếu thành công (PAID), cập nhật WithdrawalRequest và tạo Balance Transaction
     if (status === PayoutStatus.PAID) {
-      // Cập nhật WithdrawalRequest liên quan thành COMPLETED
       const linkedRequest = await transaction
-        .request() // Tìm request liên kết với payout này
+        .request()
         .input('PayoutID', sql.BigInt, payoutId)
         .query(
           'SELECT RequestID FROM WithdrawalRequests WHERE PayoutID = @PayoutID;'
@@ -611,23 +470,22 @@ const processPayoutExecution = async (payoutId, executionData, adminUser) => {
         );
       }
 
-      // *** Tạo giao dịch trừ tiền trong InstructorBalanceTransactions ***
-      const amountToDebit = updatedPayout.ActualAmount || updatedPayout.Amount; // Lấy số tiền thực trả nếu có, nếu không lấy số tiền payout
+      const amountToDebit = updatedPayout.ActualAmount || updatedPayout.Amount;
       if (amountToDebit > 0) {
         const previousBalance =
           await balanceTransactionRepository.getCurrentBalance(
             updatedPayout.InstructorID,
             transaction
           );
-        const newBalance = previousBalance - amountToDebit; // Trừ tiền
+        const newBalance = previousBalance - amountToDebit;
 
         await balanceTransactionRepository.createBalanceTransaction(
           {
             AccountID: updatedPayout.InstructorID,
             Type: 'DEBIT_WITHDRAWAL',
-            Amount: -amountToDebit, // Số tiền âm
+            Amount: -amountToDebit,
             CurrencyID:
-              updatedPayout.ActualCurrencyID || updatedPayout.CurrencyID, // Ưu tiên currency thực trả
+              updatedPayout.ActualCurrencyID || updatedPayout.CurrencyID,
             CurrentBalance: newBalance,
             RelatedEntityType: 'Payout',
             RelatedEntityID: payoutId,
@@ -644,9 +502,6 @@ const processPayoutExecution = async (payoutId, executionData, adminUser) => {
         );
       }
     } else if (status === PayoutStatus.FAILED) {
-      // Xử lý khi chi trả thất bại:
-      // - WithdrawalRequest có thể quay lại PENDING hoặc giữ nguyên PROCESSING? -> Nên quay lại PENDING để admin xử lý lại.
-      // - Có cần tạo giao dịch hoàn tiền vào balance không? Không, vì tiền chưa thực sự bị trừ khi yêu cầu.
       const linkedRequest = await transaction
         .request()
         .input('PayoutID', sql.BigInt, payoutId)
@@ -657,7 +512,7 @@ const processPayoutExecution = async (payoutId, executionData, adminUser) => {
       if (linkedRequest) {
         await payoutRepository.updateWithdrawalRequestStatus(
           linkedRequest.RequestID,
-          { Status: WithdrawalStatus.PENDING }, // Quay lại PENDING
+          { Status: WithdrawalStatus.PENDING },
           transaction
         );
         logger.info(
@@ -671,7 +526,6 @@ const processPayoutExecution = async (payoutId, executionData, adminUser) => {
     logger.info(
       `Payout ${payoutId} processed by admin ${adminUser.id} with status ${status}.`
     );
-    // TODO: Gửi thông báo chi trả thành công/thất bại cho Giảng viên
 
     try {
       let notifyMessage = '';
@@ -705,7 +559,7 @@ const processPayoutExecution = async (payoutId, executionData, adminUser) => {
       );
     }
 
-    return updatedPayout; // Trả về payout đã cập nhật
+    return updatedPayout;
   } catch (error) {
     logger.error(`Error processing payout execution for ${payoutId}:`, error);
     await transaction.rollback();
@@ -715,49 +569,6 @@ const processPayoutExecution = async (payoutId, executionData, adminUser) => {
     );
   }
 };
-// Thêm các hàm khác: lấy lịch sử rút tiền, admin thực hiện chi trả, ...
-// /**
-//  * Lấy lịch sử yêu cầu rút tiền của giảng viên.
-//  * @param {number} instructorId
-//  * @param {object} options - { page, limit, status }
-//  * @returns {Promise<object>}
-//  */
-// const getMyWithdrawalHistory = async (instructorId, options) => {
-//   const { page = 1, limit = 10, status } = options;
-//   const result = await payoutRepository.findWithdrawalRequestsByInstructor(
-//     instructorId,
-//     { page, limit, status }
-//   );
-//   return {
-//     requests: result.requests,
-//     total: result.total,
-//     page: parseInt(page, 10),
-//     limit: parseInt(limit, 10),
-//     totalPages: Math.ceil(result.total / limit),
-//   };
-// };
-
-// /**
-//  * Lấy lịch sử chi trả (Payouts) của giảng viên.
-//  * @param {number} instructorId
-//  * @param {object} options - { page, limit, statusId }
-//  * @returns {Promise<object>}
-//  */
-// const getMyPayoutHistory = async (instructorId, options) => {
-//   const { page = 1, limit = 10, statusId } = options;
-//   const result = await payoutRepository.findPayoutsByInstructor(instructorId, {
-//     page,
-//     limit,
-//     statusId,
-//   });
-//   return {
-//     payouts: result.payouts,
-//     total: result.total,
-//     page: parseInt(page, 10),
-//     limit: parseInt(limit, 10),
-//     totalPages: Math.ceil(result.total / limit),
-//   };
-// };
 
 /**
  * Lấy lịch sử hoạt động rút tiền tổng hợp của giảng viên.
@@ -784,16 +595,14 @@ const getWithdrawalActivityHistory = async (instructorId, options = {}) => {
     sortBy,
   });
 
-  // Map dữ liệu từ repo sang cấu trúc WithdrawalActivityItem của frontend
   const activities = result.activities.map((item) => {
     let currentPayoutStatus = item.PayoutStatusID;
-    // Nếu Request là REJECTED hoặc CANCELLED, và chưa có Payout, thì PayoutStatus không áp dụng
     if (
       !item.PayoutID &&
       (item.RequestStatus === WithdrawalStatus.REJECTED ||
         item.RequestStatus === WithdrawalStatus.CANCELLED)
     ) {
-      currentPayoutStatus = null; // Hoặc một giá trị đặc biệt
+      currentPayoutStatus = null;
     }
 
     return {
@@ -810,20 +619,19 @@ const getWithdrawalActivityHistory = async (instructorId, options = {}) => {
       actualAmountPaid: item.ActualAmountPaid
         ? parseFloat(item.ActualAmountPaid.toString())
         : null,
-      payoutCurrencyId: item.ActualPayoutCurrencyID || item.PayoutCurrencyID, // Ưu tiên actual
+      payoutCurrencyId: item.ActualPayoutCurrencyID || item.PayoutCurrencyID,
       exchangeRateUsed: item.ExchangeRateUsed
         ? parseFloat(item.ExchangeRateUsed.toString())
         : null,
       transactionFee: item.TransactionFee
         ? parseFloat(item.TransactionFee.toString())
         : null,
-      payoutStatus: currentPayoutStatus, // Đã xử lý ở trên
+      payoutStatus: currentPayoutStatus,
       paymentMethodUsed: item.PaymentMethodUsed,
       payoutDetailsSnapshot: item.PayoutDetailsSnapshot
         ? JSON.parse(item.PayoutDetailsSnapshot)
-        : null, // Parse JSON
+        : null,
       paymentCompletedAt: item.PaymentCompletedAt,
-      // externalTransactionId: item.ExternalTransactionID, // Cần thêm vào Payouts nếu có
       adminNotesForPayout: item.AdminNotesForPayout,
     };
   });
@@ -848,31 +656,30 @@ const getMyTransactions = async (instructorId, options = {}) => {
 
   const result = await balanceTransactionRepository.findInstructorTransactions(
     instructorId,
-    { page, limit, type, startDate, endDate, includeDetails: true } // includeDetails: true để lấy thông tin join
+    { page, limit, type, startDate, endDate, includeDetails: true }
   );
 
-  // Map kết quả từ repo sang cấu trúc InstructorTransactionItem mong muốn của frontend
   const transactions = result.transactions.map((t) => {
-    let detailedDescription = t.TransactionDescription || ''; // Mô tả gốc
+    let detailedDescription = t.TransactionDescription || '';
     if (t.Type === 'CREDIT_SALE' && t.CourseName) {
       detailedDescription = `Doanh thu từ bán khóa học: "${t.CourseName}" (Đơn hàng #${t.OrderID || 'N/A'})`;
       if (t.CustomerEmail)
         detailedDescription += ` - Người mua: ${t.CustomerEmail}`;
     } else if (t.Type === 'DEBIT_WITHDRAWAL' && t.PayoutMethodName) {
       detailedDescription = `Rút tiền thành công qua ${t.PayoutMethodName} (Yêu cầu Payout #${t.RelatedEntityID})`;
-    } // Thêm các case khác nếu cần (REFUND, FEE,...)
+    }
     console.log(t);
     return {
       transactionId: t.TransactionID,
       transactionTimestamp: t.TransactionTimestamp,
       type: t.Type,
-      amount: parseFloat(t.Amount.toString()), // Đảm bảo là number
+      amount: parseFloat(t.Amount.toString()),
       currencyId: t.CurrencyID,
       description: detailedDescription,
       relatedEntityType: t.RelatedEntityType,
       relatedEntityId: t.RelatedEntityID,
-      sourcePaymentId: t.SourcePaymentID, // ID của CoursePayments
-      orderItemId: t.Type === 'CREDIT_SALE' ? t.SourceOrderItemID : null, // ID của OrderItem
+      sourcePaymentId: t.SourcePaymentID,
+      orderItemId: t.Type === 'CREDIT_SALE' ? t.SourceOrderItemID : null,
       courseId: t.Type === 'CREDIT_SALE' ? t.CourseID : null,
       courseName: t.Type === 'CREDIT_SALE' ? t.CourseName : null,
       currentBalanceAfterTransaction: parseFloat(t.CurrentBalance.toString()),
@@ -881,7 +688,7 @@ const getMyTransactions = async (instructorId, options = {}) => {
   });
 
   return {
-    transactions, // Đổi tên key
+    transactions,
     total: result.total,
     page: parseInt(page, 10),
     limit: parseInt(limit, 10),
@@ -915,14 +722,13 @@ const getMyMonthlyEarnings = async (instructorId, queryParams) => {
       totalRevenueDataPromise,
     ]);
 
-    // Gộp dữ liệu: tạo một map từ totalRevenueData để dễ dàng truy cập
     const revenueMap = new Map();
     totalRevenueData.forEach((item) => {
       revenueMap.set(item.month, item.totalRevenue);
     });
 
     const combinedEarnings = netEarningsData.map((netItem) => {
-      const totalRevenue = revenueMap.get(netItem.month) || 0; // Lấy totalRevenue tương ứng, nếu không có thì là 0
+      const totalRevenue = revenueMap.get(netItem.month) || 0;
       return {
         month: netItem.month,
         totalRevenue,
@@ -930,19 +736,17 @@ const getMyMonthlyEarnings = async (instructorId, queryParams) => {
       };
     });
 
-    // Đảm bảo tất cả các tháng có totalRevenue cũng được bao gồm (trường hợp có total revenue nhưng không có net earning)
     revenueMap.forEach((totalRevenue, month) => {
       if (!combinedEarnings.some((e) => e.month === month)) {
         combinedEarnings.push({ month, totalRevenue, netEarnings: 0 });
       }
     });
 
-    // Sắp xếp lại theo tháng
     combinedEarnings.sort((a, b) => a.month.localeCompare(b.month));
 
     return {
       earnings: combinedEarnings,
-      currencyId: Currency.VND, // Giả sử VND
+      currencyId: Currency.VND,
     };
   } catch (error) {
     logger.error(
@@ -973,7 +777,6 @@ const getMyRevenueByCourse = async (instructorId, queryParams) => {
         options
       );
 
-    // Tính tổng netEarnings của tất cả các khóa học trong period để tính %
     const totalNetEarningsInPeriod = courseRevenues.reduce(
       (sum, course) => sum + course.netEarnings,
       0
@@ -991,7 +794,7 @@ const getMyRevenueByCourse = async (instructorId, queryParams) => {
 
     return {
       courses: coursesWithPercentage,
-      currencyId: Currency.VND, // Giả sử VND
+      currencyId: Currency.VND,
       totalCourses: coursesWithPercentage.length,
     };
   } catch (error) {
@@ -1006,14 +809,35 @@ const getMyRevenueByCourse = async (instructorId, queryParams) => {
   }
 };
 
+/**
+ * Lấy danh sách yêu cầu rút tiền cho Admin.
+ * @param {object} filters - { status, instructorId }
+ * @param {object} options - { page, limit, sortBy }
+ * @returns {Promise<object>}
+ */
+const getWithdrawalRequestsForAdmin = async (filters, options) => {
+  const { page = 1, limit = 10 } = options;
+  const result = await payoutRepository.findWithdrawalRequests(
+    filters,
+    options
+  );
+  const formattedRequests = toCamelCaseObject(result.requests);
+  return {
+    requests: formattedRequests,
+    total: result.total,
+    page: parseInt(page, 10),
+    limit: parseInt(limit, 10),
+    totalPages: Math.ceil(result.total / limit),
+  };
+};
+
 module.exports = {
   getMyAvailableBalance,
   requestWithdrawal,
   reviewWithdrawalRequest,
   getPayouts,
   processPayoutExecution,
-  // getMyWithdrawalHistory,
-  // getMyPayoutHistory,
+  getWithdrawalRequestsForAdmin,
   getMyTransactions,
   getWithdrawalActivityHistory,
   getMyMonthlyEarnings,

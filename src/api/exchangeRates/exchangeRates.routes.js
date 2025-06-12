@@ -1,4 +1,3 @@
-// File: src/api/exchangeRates/exchangeRates.routes.js
 const express = require('express');
 const validate = require('../../middlewares/validation.middleware');
 const exchangeRateValidation = require('./exchangeRates.validation');
@@ -11,15 +10,40 @@ const Roles = require('../../core/enums/Roles');
 
 const router = express.Router();
 
-// Tất cả route này yêu cầu quyền Admin
 router.use(authenticate, authorize([Roles.ADMIN, Roles.SUPERADMIN]));
 
 router.post('/update-now', exchangeRateController.updateRatesNow);
+router.get(
+  '/latest',
+  validate(exchangeRateValidation.getLatestRate),
+  exchangeRateController.getLatestRate
+);
+router
+  .route('/')
+  .get(
+    validate(exchangeRateValidation.getExchangeRates),
+    exchangeRateController.getHistory
+  )
+  .post(
+    validate(exchangeRateValidation.createExchangeRate),
+    exchangeRateController.createExchangeRate
+  );
+
+router
+  .route('/:rateId')
+  .patch(
+    validate(exchangeRateValidation.updateExchangeRate),
+    exchangeRateController.updateExchangeRate
+  )
+  .delete(
+    validate(exchangeRateValidation.deleteExchangeRate),
+    exchangeRateController.deleteExchangeRate
+  );
 
 router.get(
-  '/',
-  validate(exchangeRateValidation.getExchangeRates),
-  exchangeRateController.getHistory
+  '/fetch-external-rate',
+  validate(exchangeRateValidation.fetchExternalRate),
+  exchangeRateController.fetchExternalRate
 );
 
 module.exports = router;

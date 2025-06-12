@@ -16,7 +16,7 @@ const createReview = async (reviewData) => {
     request.input('CourseID', sql.BigInt, reviewData.CourseID);
     request.input('AccountID', sql.BigInt, reviewData.AccountID);
     request.input('Rating', sql.TinyInt, reviewData.Rating);
-    request.input('Comment', sql.NVarChar, reviewData.Comment); // NVarChar thay cho NTEXT
+    request.input('Comment', sql.NVarChar, reviewData.Comment);
 
     const result = await request.query(`
             INSERT INTO CourseReviews (CourseID, AccountID, Rating, Comment)
@@ -27,7 +27,6 @@ const createReview = async (reviewData) => {
   } catch (error) {
     logger.error('Error creating course review:', error);
     if (error.number === 2627 || error.number === 2601) {
-      // Unique AccountID + CourseID
       throw new ApiError(
         httpStatus.BAD_REQUEST,
         'Bạn đã đánh giá khóa học này rồi.'
@@ -47,7 +46,6 @@ const findReviewById = async (reviewId) => {
     const pool = await getConnection();
     const request = pool.request();
     request.input('ReviewID', sql.BigInt, reviewId);
-    // Join để lấy thông tin người dùng
     const result = await request.query(`
             SELECT r.*, up.FullName as UserFullName, up.AvatarUrl as UserAvatar
             FROM CourseReviews r
@@ -73,7 +71,6 @@ const findReviewByUserAndCourse = async (accountId, courseId) => {
     const request = pool.request();
     request.input('AccountID', sql.BigInt, accountId);
     request.input('CourseID', sql.BigInt, courseId);
-    // Join để lấy thông tin người dùng
     const result = await request.query(`
             SELECT r.*, up.FullName as UserFullName, up.AvatarUrl as UserAvatar
             FROM CourseReviews r
@@ -118,7 +115,6 @@ const findReviewsByCourseId = async (courseId, options = {}) => {
             ${whereCondition}
         `;
 
-    // Tính tổng số lượng và rating trung bình (chỉ tính 1 lần, không phân trang)
     const summaryResult = await request.query(`
             SELECT COUNT(*) as total, AVG(CAST(Rating AS DECIMAL(3,2))) as averageRating
             ${commonQuery};
@@ -126,8 +122,7 @@ const findReviewsByCourseId = async (courseId, options = {}) => {
     const { total } = summaryResult.recordset[0];
     const { averageRating } = summaryResult.recordset[0];
 
-    // Lấy dữ liệu phân trang
-    let orderByClause = 'ORDER BY r.ReviewedAt DESC'; // Mặc định
+    let orderByClause = 'ORDER BY r.ReviewedAt DESC';
     if (sortBy) {
       const [sortField, sortOrder] = sortBy.split(':');
       const allowedSortFields = {
@@ -137,7 +132,7 @@ const findReviewsByCourseId = async (courseId, options = {}) => {
       const orderDirection =
         sortOrder?.toLowerCase() === 'asc' ? 'ASC' : 'DESC';
       if (allowedSortFields[sortField]) {
-        orderByClause = `ORDER BY ${allowedSortFields[sortField]} ${orderDirection}, r.ReviewID ${orderDirection}`; // Thêm ID để đảm bảo thứ tự ổn định
+        orderByClause = `ORDER BY ${allowedSortFields[sortField]} ${orderDirection}, r.ReviewID ${orderDirection}`;
       }
     }
 
@@ -173,8 +168,6 @@ const updateReviewById = async (reviewId, updateData) => {
     const pool = await getConnection();
     const request = pool.request();
     request.input('ReviewID', sql.BigInt, reviewId);
-    // Không cập nhật ReviewedAt khi sửa? Hay nên có UpdatedAt? -> Thêm UpdatedAt vào bảng nếu cần
-    // request.input('UpdatedAt', sql.DateTime2, new Date());
     logger.info('updateData', updateData);
     const setClauses = [];
     if (updateData.Rating !== undefined) {
@@ -186,7 +179,7 @@ const updateReviewById = async (reviewId, updateData) => {
       setClauses.push('Comment = @Comment');
     }
 
-    if (setClauses.length === 0) return null; // Không có gì cập nhật
+    if (setClauses.length === 0) return null;
 
     const result = await request.query(`
             UPDATE CourseReviews
@@ -194,10 +187,9 @@ const updateReviewById = async (reviewId, updateData) => {
             OUTPUT Inserted.*
             WHERE ReviewID = @ReviewID;
         `);
-    // Join lại để lấy User info nếu cần trả về đầy đủ
     const updatedReview = result.recordset[0];
     if (updatedReview) {
-      const fullReview = await findReviewById(updatedReview.ReviewID); // Lấy lại để có user info
+      const fullReview = await findReviewById(updatedReview.ReviewID);
       return fullReview;
     }
     return null;
@@ -252,22 +244,14 @@ const findReviewsByFilters = async (
     const whereClauses = [];
 
     if (courseIds && courseIds.length > 0) {
-      // Xử lý mảng courseIds cho IN clause
       const courseIdParams = courseIds.map((id, index) => `@courseId_${index}`);
       courseIds.forEach((id, index) =>
         request.input(`courseId_${index}`, sql.Int, id)
       );
       whereClauses.push(`cr.CourseID IN (${courseIdParams.join(',')})`);
     } else {
-      // Nếu không có courseIds (ví dụ: giảng viên không có khóa học), trả về rỗng sớm
-      // Hoặc có thể để query chạy và không trả về gì, nhưng trả về sớm sẽ hiệu quả hơn
       return { reviews: [], total: 0, page, limit, totalPages: 0 };
     }
-
-    // if (specificCourseId) { // Nếu muốn filter thêm theo 1 courseId cụ thể trong list của GV
-    //   request.input('SpecificCourseID', sql.Int, specificCourseId);
-    //   whereClauses.push('cr.CourseID = @SpecificCourseID');
-    // }
 
     if (typeof minRating === 'number') {
       request.input('MinRating', sql.Int, minRating);
@@ -277,7 +261,6 @@ const findReviewsByFilters = async (
     const whereCondition =
       whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
 
-    // --- Câu truy vấn đếm tổng số ---
     const countQuery = `
       SELECT COUNT(cr.ReviewID) as total
       FROM CourseReviews cr
@@ -290,8 +273,7 @@ const findReviewsByFilters = async (
       return { reviews: [], total: 0, page, limit, totalPages: 0 };
     }
 
-    // --- Sắp xếp ---
-    let orderByClause = 'ORDER BY cr.CreatedAt DESC'; // Mặc định
+    let orderByClause = 'ORDER BY cr.CreatedAt DESC';
     if (sortBy) {
       const [field, order] = sortBy.split(':');
       const sortOrder = order?.toLowerCase() === 'asc' ? 'ASC' : 'DESC';
@@ -308,8 +290,6 @@ const findReviewsByFilters = async (
       }
     }
 
-    // --- Câu truy vấn lấy dữ liệu ---
-    // Cần JOIN với Courses để lấy CourseName, UserProfiles để lấy thông tin người review
     const dataQuery = `
       SELECT
         cr.ReviewID,
@@ -334,7 +314,6 @@ const findReviewsByFilters = async (
 
     const dataResult = await request.query(dataQuery);
 
-    // Áp dụng toCamelCaseObject cho từng review nếu cần (hoặc service tự map)
     const reviews = dataResult.recordset.map((review) => ({
       reviewId: review.ReviewID,
       courseId: review.CourseID,
@@ -344,7 +323,7 @@ const findReviewsByFilters = async (
       accountId: review.AccountID,
       userFullName: review.UserFullName,
       userAvatarUrl: review.UserAvatarUrl,
-      createdAt: review.CreatedAt, // Sử dụng CreatedAt cho reviewedAt
+      createdAt: review.CreatedAt,
       updatedAt: review.UpdatedAt,
     }));
 

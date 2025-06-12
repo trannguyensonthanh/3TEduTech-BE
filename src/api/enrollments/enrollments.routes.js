@@ -8,8 +8,9 @@ const { authenticate } = require('../../middlewares/auth.middleware');
 
 const router = express.Router();
 
-// Route để lấy danh sách các khóa học user đã đăng ký
-// Có thể đặt là /users/me/enrollments hoặc /enrollments/me
+/**
+ * Lấy danh sách các khóa học user đã đăng ký
+ */
 router.get(
   '/me',
   authenticate,
@@ -17,11 +18,12 @@ router.get(
   enrollmentController.getMyEnrollments
 );
 
-// Route để user tự enroll (chỉ nên dùng cho test hoặc khóa miễn phí)
-// Thường thì enroll sẽ nằm trong module Courses hoặc được gọi từ Payment service
+/**
+ * Đăng ký khóa học
+ */
 router.post(
   '/courses/:courseId',
-  authenticate, // Cần đăng nhập để enroll
+  authenticate,
   validate(enrollmentValidation.createEnrollment),
   enrollmentController.enrollInCourse
 );

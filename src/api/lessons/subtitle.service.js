@@ -1,15 +1,12 @@
-// src/api/lessons/subtitle.service.js
-const httpStatus = require('http-status');
+const httpStatus = require('http-status').status;
 const subtitleRepository = require('./subtitle.repository');
-const lessonRepository = require('./lessons.repository'); // Check lesson tồn tại
-const { checkCourseAccess } = require('../sections/sections.service'); // Check quyền course
+const lessonRepository = require('./lessons.repository');
+const { checkCourseAccess } = require('../sections/sections.service');
 const ApiError = require('../../core/errors/ApiError');
 const logger = require('../../utils/logger');
-const { getConnection, sql } = require('../../database/connection'); // Cho transaction
+const { getConnection, sql } = require('../../database/connection');
 const { toCamelCaseObject } = require('../../utils/caseConverter');
 const languageRepository = require('../languages/languages.repository');
-// Có thể dùng thư viện để lấy tên ngôn ngữ từ code
-// const { getName } = require('iso-639-1');
 
 /**
  * Lấy danh sách phụ đề cho một bài học.
@@ -22,10 +19,8 @@ const getSubtitles = async (lessonId, user) => {
   if (!lesson)
     throw new ApiError(httpStatus.NOT_FOUND, 'Bài học không tồn tại.');
 
-  // Kiểm tra quyền xem bài học (tương tự như khi lấy video URL)
-  // await checkLessonAccess(lesson, user); // Cần hàm checkLessonAccess riêng hoặc dùng logic enroll/owner/admin
-
-  return subtitleRepository.findSubtitlesByLessonId(lessonId);
+  const result = await subtitleRepository.findSubtitlesByLessonId(lessonId);
+  return toCamelCaseObject(result);
 };
 
 /**
@@ -39,7 +34,7 @@ const addSubtitle = async (lessonId, subtitleData, user) => {
   const lesson = await lessonRepository.findLessonById(lessonId);
   if (!lesson)
     throw new ApiError(httpStatus.NOT_FOUND, 'Bài học không tồn tại.');
-  await checkCourseAccess(lesson.CourseID, user, 'thêm phụ đề'); // Check quyền sửa khóa học
+  await checkCourseAccess(lesson.CourseID, user, 'thêm phụ đề');
 
   const { languageCode, subtitleUrl, isDefault } = subtitleData;
 
@@ -52,12 +47,12 @@ const addSubtitle = async (lessonId, subtitleData, user) => {
       `Mã ngôn ngữ '${languageCode}' không hợp lệ hoặc không được kích hoạt.`
     );
   }
-  const languageName = langRecord.LanguageName; // Lấy tên từ DB
+  const languageName = langRecord.LanguageName;
 
   const dataToSave = {
     LessonID: lessonId,
     LanguageCode: languageCode.toLowerCase(),
-    LanguageName: languageName, // *** Dùng tên đã lấy ***
+    LanguageName: languageName,
     SubtitleUrl: subtitleUrl,
     IsDefault: !!isDefault,
   };
@@ -67,9 +62,8 @@ const addSubtitle = async (lessonId, subtitleData, user) => {
   try {
     await transaction.begin();
 
-    // Nếu đặt làm primary, bỏ primary cũ trước
     if (dataToSave.IsDefault) {
-      await subtitleRepository.setPrimarySubtitle(lessonId, 0, transaction); // Bỏ hết primary cũ
+      await subtitleRepository.setPrimarySubtitle(lessonId, 0, transaction);
     }
 
     const newSubtitle = await subtitleRepository.addSubtitle(
@@ -77,14 +71,27 @@ const addSubtitle = async (lessonId, subtitleData, user) => {
       transaction
     );
 
-    // Nếu vừa thêm và đặt làm primary, cập nhật lại chính nó
+    const subtitlesCount = await subtitleRepository.countSubtitlesByLessonId(
+      lessonId,
+      transaction
+    );
+
+    if (subtitlesCount === 1) {
+      await subtitleRepository.setPrimarySubtitle(
+        lessonId,
+        newSubtitle.SubtitleID,
+        transaction
+      );
+      newSubtitle.IsDefault = true;
+    }
+
     if (dataToSave.IsDefault) {
       await subtitleRepository.setPrimarySubtitle(
         lessonId,
         newSubtitle.SubtitleID,
         transaction
       );
-      newSubtitle.IsDefault = true; // Cập nhật lại trạng thái trả về
+      newSubtitle.IsDefault = true;
     }
 
     await transaction.commit();
@@ -129,10 +136,8 @@ const setPrimarySubtitle = async (lessonId, subtitleId, user) => {
   try {
     await transaction.begin();
 
-    // Tắt `isDefault` cho phụ đề cũ (nếu có)
     await subtitleRepository.setPrimarySubtitle(lessonId, 0, transaction);
 
-    // Đặt `isDefault` cho phụ đề mới
     const updatedSubtitle = await subtitleRepository.setPrimarySubtitle(
       lessonId,
       subtitleId,
@@ -142,7 +147,7 @@ const setPrimarySubtitle = async (lessonId, subtitleId, user) => {
     await transaction.commit();
 
     logger.info(`Subtitle ${subtitleId} set as primary for lesson ${lessonId}`);
-    return toCamelCaseObject(updatedSubtitle); // Trả về phụ đề đã cập nhật
+    return toCamelCaseObject(updatedSubtitle);
   } catch (error) {
     await transaction.rollback();
     logger.error(`Error setting primary subtitle ${subtitleId}:`, error);
@@ -174,8 +179,6 @@ const deleteSubtitle = async (lessonId, subtitleId, user) => {
     );
   }
 
-  // TODO: Nếu xóa phụ đề private trên Cloudinary, cần gọi deleteAsset ở đây
-
   const deletedCount = await subtitleRepository.deleteSubtitleById(subtitleId);
   if (deletedCount === 0) {
     throw new ApiError(
@@ -184,8 +187,6 @@ const deleteSubtitle = async (lessonId, subtitleId, user) => {
     );
   }
   logger.info(`Subtitle ${subtitleId} deleted for lesson ${lessonId}`);
-
-  // Nếu xóa phụ đề mặc định, cần chọn cái khác làm mặc định? (Tùy logic)
 };
 
 module.exports = {
@@ -193,5 +194,4 @@ module.exports = {
   addSubtitle,
   setPrimarySubtitle,
   deleteSubtitle,
-  // Thêm updateSubtitle nếu cần sửa URL/Name
 };

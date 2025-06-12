@@ -4,6 +4,7 @@ const { catchAsync } = require('../../utils/catchAsync');
 
 const getMyPayoutMethods = catchAsync(async (req, res) => {
   const methods = await instructorService.getMyPayoutMethods(req.user.id);
+
   res.status(httpStatus.OK).send({ payoutMethods: methods });
 });
 
@@ -29,7 +30,7 @@ const setMyPrimaryPayoutMethod = catchAsync(async (req, res) => {
     req.user.id,
     req.params.payoutMethodId
   );
-  res.status(httpStatus.OK).send({ payoutMethods: methods });
+  res.status(httpStatus.OK).send(methods);
 });
 
 const deleteMyPayoutMethod = catchAsync(async (req, res) => {

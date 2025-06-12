@@ -28,24 +28,22 @@ router.get(
   orderController.getMyOrderDetails
 );
 
-// --- Route cho Webhook từ cổng thanh toán ---
-// Route này KHÔNG nên dùng authenticate vì cổng thanh toán gọi đến
-// Cần cơ chế bảo mật khác (signature verification) bên trong controller
+// Route cho Webhook từ cổng thanh toán
 const webhookRouter = express.Router();
-webhookRouter.post('/payment-callback', orderController.handlePaymentWebhook);
-webhookRouter.get('/payment-callback', orderController.handlePaymentWebhook);
+
 webhookRouter.post(
   '/stripe',
   express.raw({ type: 'application/json' }),
   orderController.handleStripeWebhook
 );
+
 const nowPaymentsRawBody = (req, res, next) => {
   let data = '';
   req.on('data', (chunk) => {
     data += chunk;
   });
   req.on('end', () => {
-    req.rawBody = data; // Gắn dữ liệu thô vào request
+    req.rawBody = data;
     next();
   });
 };
@@ -53,11 +51,19 @@ const nowPaymentsRawBody = (req, res, next) => {
 webhookRouter.post(
   '/crypto',
   express.raw({ type: 'application/json' }),
-  nowPaymentsRawBody, // Chạy middleware lấy raw body trước
-
+  nowPaymentsRawBody,
   paymentController.handleCryptoWebhook
 );
+
+webhookRouter.use(express.json());
+webhookRouter.use(express.urlencoded({ extended: true }));
+
+webhookRouter.post('/payment-callback', orderController.handlePaymentWebhook);
+webhookRouter.get('/payment-callback', orderController.handlePaymentWebhook);
+
+webhookRouter.post('/momo', paymentController.handleMomoWebhook);
+
 module.exports = {
   orderRouter: router,
-  webhookRouter, // Export riêng webhook router
+  webhookRouter,
 };

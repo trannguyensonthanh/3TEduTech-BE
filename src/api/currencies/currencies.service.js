@@ -7,14 +7,14 @@ const { toCamelCaseObject } = require('../../utils/caseConverter');
 
 const createCurrency = async (currencyBody) => {
   const { currencyId, currencyName, type, decimalPlaces } = currencyBody;
-  const normalizedId = currencyId.toUpperCase(); // Kiểm tra trùng ID
+  const normalizedId = currencyId.toUpperCase();
 
   if (await currencyRepository.findCurrencyById(normalizedId)) {
     throw new ApiError(
       httpStatus.BAD_REQUEST,
       `Mã tiền tệ '${normalizedId}' đã tồn tại.`
     );
-  } // Kiểm tra trùng tên
+  }
   if (await currencyRepository.findCurrencyByName(currencyName)) {
     throw new ApiError(
       httpStatus.BAD_REQUEST,
@@ -69,13 +69,13 @@ const updateCurrency = async (currencyId, updateBody) => {
     CurrencyName: updateBody.currencyName,
     Type: updateBody.type,
     DecimalPlaces: updateBody.decimalPlaces,
-  }; // Lọc bỏ các trường undefined
+  };
   Object.keys(dataToUpdate).forEach(
     (key) => dataToUpdate[key] === undefined && delete dataToUpdate[key]
   );
 
   if (Object.keys(dataToUpdate).length === 0) {
-    return toCamelCaseObject(currency); // Không có gì thay đổi
+    return toCamelCaseObject(currency);
   }
 
   const updatedCurrency = await currencyRepository.updateCurrencyById(

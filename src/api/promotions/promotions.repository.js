@@ -12,7 +12,6 @@ const createPromotion = async (promoData) => {
   try {
     const pool = await getConnection();
     const request = pool.request();
-    // Add inputs for all fields in Promotions table
     request.input('DiscountCode', sql.VarChar, promoData.DiscountCode);
     request.input('PromotionName', sql.NVarChar, promoData.PromotionName);
     request.input('Description', sql.NVarChar, promoData.Description);
@@ -27,8 +26,7 @@ const createPromotion = async (promoData) => {
     request.input('StartDate', sql.DateTime2, promoData.StartDate);
     request.input('EndDate', sql.DateTime2, promoData.EndDate);
     request.input('MaxUsageLimit', sql.Int, promoData.MaxUsageLimit);
-    // UsageCount mặc định là 0
-    request.input('Status', sql.VarChar, promoData.Status); // Status nên được xác định bởi service
+    request.input('Status', sql.VarChar, promoData.Status);
 
     const result = await request.query(`
             INSERT INTO Promotions (
@@ -45,7 +43,6 @@ const createPromotion = async (promoData) => {
   } catch (error) {
     logger.error('Error creating promotion:', error);
     if (error.number === 2627 || error.number === 2601) {
-      // Unique DiscountCode
       throw new ApiError(httpStatus.BAD_REQUEST, 'Mã giảm giá đã tồn tại.');
     }
     throw error;
@@ -122,7 +119,7 @@ const findAllPromotions = async (filters = {}, options = {}) => {
 
     const orderByClause = 'ORDER BY CreatedAt DESC';
     if (sortBy) {
-      // Add sorting logic if needed
+      //
     }
 
     request.input('Limit', sql.Int, limit);
@@ -152,18 +149,15 @@ const updatePromotionById = async (promotionId, updateData) => {
     request.input('UpdatedAt', sql.DateTime2, new Date());
 
     const setClauses = ['UpdatedAt = @UpdatedAt'];
-    // Add inputs and SET clauses dynamically based on updateData keys
     Object.keys(updateData).forEach((key) => {
       if (
         key !== 'PromotionID' &&
         key !== 'UsageCount' &&
         key !== 'CreatedAt'
       ) {
-        // Cannot update these fields directly
         const value = updateData[key];
         let sqlType;
 
-        // Determine SQL type based on key (Example)
         if (['DiscountCode', 'DiscountType', 'Status'].includes(key))
           sqlType = sql.VarChar;
         else if (['PromotionName', 'Description'].includes(key))
@@ -175,7 +169,7 @@ const updatePromotionById = async (promotionId, updateData) => {
         else if (['StartDate', 'EndDate'].includes(key))
           sqlType = sql.DateTime2;
         else if (['MaxUsageLimit'].includes(key)) sqlType = sql.Int;
-        else return; // Skip unknown keys
+        else return;
 
         request.input(key, sqlType, value);
         setClauses.push(`${key} = @${key}`);
@@ -193,7 +187,6 @@ const updatePromotionById = async (promotionId, updateData) => {
   } catch (error) {
     logger.error(`Error updating promotion ${promotionId}:`, error);
     if (error.number === 2627 || error.number === 2601) {
-      // Unique DiscountCode
       throw new ApiError(httpStatus.BAD_REQUEST, 'Mã giảm giá đã tồn tại.');
     }
     throw error;
@@ -210,13 +203,12 @@ const incrementUsageCount = async (promotionId, transaction) => {
   const request = transaction.request();
   request.input('PromotionID', sql.Int, promotionId);
   try {
-    // Điều kiện WHERE đảm bảo không tăng vượt MaxUsageLimit
     const result = await request.query(`
             UPDATE Promotions
             SET UsageCount = UsageCount + 1
             WHERE PromotionID = @PromotionID AND (MaxUsageLimit IS NULL OR UsageCount < MaxUsageLimit);
         `);
-    return result.rowsAffected[0] > 0; // Trả về true nếu có dòng bị ảnh hưởng (tức là tăng thành công)
+    return result.rowsAffected[0] > 0;
   } catch (error) {
     logger.error(
       `Error incrementing usage count for promotion ${promotionId}:`,
@@ -243,10 +235,9 @@ const updatePromotionStatus = async (promotionId, status) => {
  * @returns {Promise<boolean>} - True nếu giảm thành công (có dòng bị ảnh hưởng).
  */
 const decrementUsageCount = async (promotionId, transaction) => {
-  const request = transaction.request(); // Sử dụng request từ transaction được truyền vào
+  const request = transaction.request();
   request.input('PromotionID', sql.Int, promotionId);
   try {
-    // Chỉ giảm nếu UsageCount > 0 để tránh số âm
     const result = await request.query(`
             UPDATE Promotions
             SET UsageCount = UsageCount - 1, UpdatedAt = GETDATE()
@@ -258,7 +249,35 @@ const decrementUsageCount = async (promotionId, transaction) => {
       `Error decrementing usage count for promotion ${promotionId}:`,
       error
     );
-    throw error; // Ném lại để transaction bên ngoài có thể rollback
+    throw error;
+  }
+};
+
+/**
+ * Xóa một promotion bằng ID.
+ * @param {number} promotionId
+ * @returns {Promise<number>} - Số dòng bị ảnh hưởng (0 hoặc 1).
+ */
+const deletePromotionById = async (promotionId) => {
+  try {
+    const pool = await getConnection();
+    const request = pool.request();
+    request.input('PromotionID', sql.Int, promotionId);
+
+    const result = await request.query(
+      'DELETE FROM Promotions WHERE PromotionID = @PromotionID'
+    );
+
+    return result.rowsAffected[0];
+  } catch (error) {
+    logger.error(`Error deleting promotion ${promotionId}:`, error);
+    if (error.number === 547) {
+      throw new ApiError(
+        httpStatus.BAD_REQUEST,
+        'Không thể xóa mã giảm giá vì có ràng buộc dữ liệu khác.'
+      );
+    }
+    throw error;
   }
 };
 
@@ -271,4 +290,5 @@ module.exports = {
   incrementUsageCount,
   updatePromotionStatus,
   decrementUsageCount,
+  deletePromotionById,
 };

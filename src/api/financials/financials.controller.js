@@ -4,11 +4,13 @@ const httpStatus = require('http-status').status;
 const financialsService = require('./financials.service');
 const { catchAsync } = require('../../utils/catchAsync');
 const { pick } = require('../../utils/pick');
+
 // --- Instructor Controllers ---
 const getMyAvailableBalance = catchAsync(async (req, res) => {
-  const balance = await financialsService.getMyAvailableBalance(req.user.id);
-  // Trả về balance và currency mặc định (VND)
-  res.status(httpStatus.OK).send({ balance, currency: 'VND' });
+  const balanceInfo = await financialsService.getMyAvailableBalance(
+    req.user.id
+  );
+  res.status(httpStatus.OK).send(balanceInfo);
 });
 
 const requestWithdrawal = catchAsync(async (req, res) => {
@@ -19,41 +21,31 @@ const requestWithdrawal = catchAsync(async (req, res) => {
   res.status(httpStatus.CREATED).send(request);
 });
 
-// Thêm getMyWithdrawalHistory nếu cần
-
-// const getMyWithdrawalHistory = catchAsync(async (req, res) => {
-//   const options = pick(req.query, ['limit', 'page', 'status']);
-//   const result = await financialsService.getMyWithdrawalHistory(
-//     req.user.id,
-//     options
-//   );
-//   res.status(httpStatus.OK).send(result);
-// });
-
-// const getMyPayoutHistory = catchAsync(async (req, res) => {
-//   const options = pick(req.query, ['limit', 'page', 'statusId']);
-//   const result = await financialsService.getMyPayoutHistory(
-//     req.user.id,
-//     options
-//   );
-//   res.status(httpStatus.OK).send(result);
-// });
+const getWithdrawalRequests = catchAsync(async (req, res) => {
+  const filters = pick(req.query, ['status', 'instructorId']);
+  const options = pick(req.query, ['page', 'limit', 'sortBy']);
+  const result = await financialsService.getWithdrawalRequestsForAdmin(
+    filters,
+    options
+  );
+  res.status(httpStatus.OK).send(result);
+});
 
 const getMyTransactions = catchAsync(async (req, res) => {
-  // Đổi tên
   const options = pick(req.query, [
     'limit',
     'page',
     'type',
     'startDate',
     'endDate',
-  ]); // Thêm filter
+  ]);
   const result = await financialsService.getMyTransactions(
     req.user.id,
     options
-  ); // Gọi service mới
+  );
   res.status(httpStatus.OK).send(result);
 });
+
 // --- Admin Controllers ---
 const reviewWithdrawalRequest = catchAsync(async (req, res) => {
   const { decision, adminNotes } = req.body;
@@ -66,7 +58,6 @@ const reviewWithdrawalRequest = catchAsync(async (req, res) => {
   res.status(httpStatus.OK).send(updatedRequest);
 });
 
-// Thêm getWithdrawalRequests (Admin), processPayout (Admin) nếu cần
 // --- Thêm Admin Controllers ---
 const getPayouts = catchAsync(async (req, res) => {
   const filters = pick(req.query, [
@@ -126,8 +117,7 @@ module.exports = {
   // Instructor
   getMyAvailableBalance,
   requestWithdrawal,
-  // getMyWithdrawalHistory,
-  // getMyPayoutHistory,
+  getWithdrawalRequests,
   getMyTransactions,
   // Admin
   reviewWithdrawalRequest,

@@ -3,7 +3,6 @@ const notificationRepository = require('./notifications.repository');
 const ApiError = require('../../core/errors/ApiError');
 const logger = require('../../utils/logger');
 const { toCamelCaseObject } = require('../../utils/caseConverter');
-// const webSocketService = require('../../services/websocket.service'); // Sẽ cần nếu dùng WebSocket
 
 /**
  * Tạo thông báo mới (dùng nội bộ).
@@ -30,19 +29,13 @@ const createNotification = async (
     const notification =
       await notificationRepository.createNotification(notificationData);
     logger.info(`Notification created for user ${recipientId}, type: ${type}`);
-
-    // *** TODO: Gửi thông báo qua WebSocket nếu đang dùng ***
-    // const unreadCount = await countUnreadNotifications(recipientId);
-    // webSocketService.sendNotification(recipientId, { notification, unreadCount });
-
     return notification;
   } catch (error) {
-    // Không nên throw lỗi ra ngoài các service khác nếu việc tạo thông báo thất bại
     logger.error(
       `Failed to create notification for user ${recipientId}:`,
       error
     );
-    return null; // Trả về null hoặc không trả gì cả
+    return null;
   }
 };
 
@@ -53,7 +46,7 @@ const createNotification = async (
  * @returns {Promise<object>} - { notifications, total, page, limit, totalPages }
  */
 const getMyNotifications = async (accountId, options) => {
-  const { page = 1, limit = 10, isRead = null } = options; // Mặc định lấy cả đọc/chưa đọc
+  const { page = 1, limit = 10, isRead = null } = options;
   const result = await notificationRepository.findNotificationsByAccountId(
     accountId,
     { page, limit, isRead }
@@ -79,8 +72,6 @@ const markAsRead = async (accountId, notificationId) => {
     accountId
   );
   if (rowsAffected === 0) {
-    // Có thể do thông báo không tồn tại, không thuộc về user, hoặc đã đọc rồi
-    // Không cần báo lỗi nghiêm trọng
     logger.warn(
       `Attempt to mark notification ${notificationId} as read for user ${accountId} affected 0 rows.`
     );
@@ -88,9 +79,6 @@ const markAsRead = async (accountId, notificationId) => {
     logger.info(
       `Notification ${notificationId} marked as read for user ${accountId}.`
     );
-    // *** TODO: Gửi cập nhật unread count qua WebSocket nếu đang dùng ***
-    // const unreadCount = await countUnreadNotifications(accountId);
-    // webSocketService.sendUnreadCount(accountId, unreadCount);
   }
 };
 
@@ -105,10 +93,6 @@ const markAllAsRead = async (accountId) => {
   logger.info(
     `${markedCount} notifications marked as read for user ${accountId}.`
   );
-  // *** TODO: Gửi cập nhật unread count qua WebSocket nếu đang dùng ***
-  // if (markedCount > 0) {
-  //      webSocketService.sendUnreadCount(accountId, 0);
-  // }
   return { markedCount };
 };
 
@@ -134,16 +118,12 @@ const deleteNotification = async (accountId, notificationId) => {
       accountId
     );
   if (rowsAffected === 0) {
-    // Có thể do thông báo không tồn tại hoặc không thuộc về user
     throw new ApiError(
       httpStatus.NOT_FOUND,
       'Không tìm thấy thông báo hoặc bạn không có quyền xóa.'
     );
   }
   logger.info(`Notification ${notificationId} deleted for user ${accountId}.`);
-  // TODO: Gửi cập nhật unread count qua WebSocket nếu cần
-  // const unreadCount = await countUnreadNotifications(accountId);
-  // webSocketService.sendUnreadCount(accountId, unreadCount);
 };
 
 /**
@@ -157,7 +137,6 @@ const deleteAllReadNotifications = async (accountId) => {
   logger.info(
     `${deletedCount} read notifications deleted for user ${accountId}.`
   );
-  // TODO: Gửi cập nhật unread count (không đổi nếu chỉ xóa đã đọc)
   return { deletedCount };
 };
 
@@ -172,13 +151,11 @@ const deleteAllMyNotifications = async (accountId) => {
   logger.info(
     `All ${deletedCount} notifications deleted for user ${accountId}.`
   );
-  // TODO: Gửi cập nhật unread count qua WebSocket (sẽ về 0)
-  // webSocketService.sendUnreadCount(accountId, 0);
   return { deletedCount };
 };
 
 module.exports = {
-  createNotification, // Dùng nội bộ
+  createNotification,
   getMyNotifications,
   markAsRead,
   markAllAsRead,

@@ -2,11 +2,13 @@
 
 const cron = require('node-cron');
 const logger = require('../utils/logger');
-const exchangeRateService = require('../api/exchangeRates/exchange-rates.service');
+const exchangeRateService = require('../api/exchangeRates/exchangeRates.service');
 
+/**
+ * Schedule the exchange rate update job.
+ */
 const scheduleExchangeRateUpdate = () => {
-  // Chạy mỗi ngày vào lúc 21:02 (9h02 tối, giờ server)
-  const cronSchedule = process.env.EXCHANGE_RATE_CRON_SCHEDULE || '3 21 * * *';
+  const cronSchedule = process.env.EXCHANGE_RATE_CRON_SCHEDULE || '17 0 * * *';
 
   if (cron.validate(cronSchedule)) {
     cron.schedule(cronSchedule, () => {

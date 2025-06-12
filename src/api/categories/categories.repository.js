@@ -4,7 +4,9 @@ const httpStatus = require('http-status').status;
 const ApiError = require('../../core/errors/ApiError');
 const { getConnection, sql } = require('../../database/connection');
 const logger = require('../../utils/logger');
-
+/**
+ * Tạo danh mục mới
+ */
 const createCategory = async ({ categoryName, slug, description, iconUrl }) => {
   try {
     const pool = await getConnection();
@@ -26,6 +28,9 @@ const createCategory = async ({ categoryName, slug, description, iconUrl }) => {
   }
 };
 
+/**
+ * Tìm danh mục theo ID
+ */
 const findCategoryById = async (categoryId) => {
   try {
     const pool = await getConnection();
@@ -41,6 +46,9 @@ const findCategoryById = async (categoryId) => {
   }
 };
 
+/**
+ * Tìm danh mục theo slug
+ */
 const findCategoryBySlug = async (slug) => {
   try {
     const pool = await getConnection();
@@ -56,6 +64,9 @@ const findCategoryBySlug = async (slug) => {
   }
 };
 
+/**
+ * Tìm danh mục theo tên
+ */
 const findCategoryByName = async (categoryName) => {
   try {
     const pool = await getConnection();
@@ -71,8 +82,10 @@ const findCategoryByName = async (categoryName) => {
   }
 };
 
+/**
+ * Lấy tất cả danh mục (có phân trang và tìm kiếm)
+ */
 const findAllCategories = async ({ page = 1, limit = 0, searchTerm = '' }) => {
-  // limit = 0 để lấy tất cả
   try {
     const pool = await getConnection();
     const request = pool.request();
@@ -110,7 +123,6 @@ const findAllCategories = async ({ page = 1, limit = 0, searchTerm = '' }) => {
     query += ' ORDER BY CategoryName ASC';
 
     let total = 0;
-    // Chỉ thực hiện count nếu có phân trang (limit > 0)
     if (limit > 0) {
       const countResult = await request.query(countQuery);
       total = countResult.recordset[0].total;
@@ -121,13 +133,16 @@ const findAllCategories = async ({ page = 1, limit = 0, searchTerm = '' }) => {
     }
 
     const result = await request.query(query);
-    return { categories: result.recordset, total }; // Trả về total = 0 nếu không phân trang
+    return { categories: result.recordset, total };
   } catch (error) {
     logger.error('Error in findAllCategories repository:', error);
     throw error;
   }
 };
 
+/**
+ * Cập nhật danh mục theo ID
+ */
 const updateCategoryById = async (categoryId, updateData) => {
   try {
     const pool = await getConnection();
@@ -143,14 +158,14 @@ const updateCategoryById = async (categoryId, updateData) => {
       } else if (key === 'Slug' || key === 'IconUrl') {
         sqlType = sql.VarChar;
       } else {
-        return; // Bỏ qua các key không hợp lệ
+        return;
       }
 
       request.input(key, sqlType, value);
       setClauses.push(`${key} = @${key}`);
     });
 
-    if (setClauses.length === 1) return 0; // Không có gì để cập nhật
+    if (setClauses.length === 1) return 0;
 
     const query = `
             UPDATE Categories
@@ -159,13 +174,16 @@ const updateCategoryById = async (categoryId, updateData) => {
             WHERE CategoryID = @CategoryID;
         `;
     const result = await request.query(query);
-    return result.recordset[0]; // Trả về bản ghi đã cập nhật
+    return result.recordset[0];
   } catch (error) {
     logger.error(`Error updating category ${categoryId}:`, error);
     throw error;
   }
 };
 
+/**
+ * Đếm số khóa học trong danh mục
+ */
 const countCoursesInCategory = async (categoryId) => {
   try {
     const pool = await getConnection();
@@ -181,27 +199,27 @@ const countCoursesInCategory = async (categoryId) => {
   }
 };
 
+/**
+ * Xóa danh mục theo ID
+ */
 const deleteCategoryById = async (categoryId) => {
   try {
     const pool = await getConnection();
     const request = pool.request();
     request.input('CategoryID', sql.Int, categoryId);
-    // ON DELETE NO ACTION sẽ gây lỗi nếu có khóa học tham chiếu, nên không cần query phức tạp
     const result = await request.query(
       'DELETE FROM Categories WHERE CategoryID = @CategoryID'
     );
-    return result.rowsAffected[0]; // Số dòng bị xóa
+    return result.rowsAffected[0];
   } catch (error) {
     logger.error(`Error deleting category ${categoryId}:`, error);
-    // Bắt lỗi FK cụ thể
     if (error.number === 547) {
-      // Lỗi Foreign Key constraint
       throw new ApiError(
         httpStatus.BAD_REQUEST,
         'Không thể xóa danh mục vì đang có khóa học sử dụng.'
       );
     }
-    throw error; // Ném lại các lỗi khác
+    throw error;
   }
 };
 
@@ -212,6 +230,6 @@ module.exports = {
   findCategoryByName,
   findAllCategories,
   updateCategoryById,
-  countCoursesInCategory, // Giữ lại để service kiểm tra trước
+  countCoursesInCategory,
   deleteCategoryById,
 };

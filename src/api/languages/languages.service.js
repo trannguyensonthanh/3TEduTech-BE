@@ -1,5 +1,4 @@
-// src/api/languages/languages.service.js
-const httpStatus = require('http-status');
+const httpStatus = require('http-status').status;
 const languageRepository = require('./languages.repository');
 const ApiError = require('../../core/errors/ApiError');
 const logger = require('../../utils/logger');
@@ -16,9 +15,8 @@ const getLanguages = async (options = {}) => {
     page = 1,
     limit = 10,
     sortBy = 'DisplayOrder:asc',
-  } = options; // Gán giá trị mặc định ở đây
-  // Nếu FE gửi limit = 0 (hoặc không gửi limit và muốn mặc định lấy hết), thì repo sẽ xử lý
-  const effectiveLimit = limit === 0 ? 0 : options.limit || 10; // Để repo xử lý limit 0
+  } = options;
+  const effectiveLimit = limit === 0 ? 0 : options.limit || 10;
 
   const result = await languageRepository.findAllLanguages({
     isActive,
@@ -31,13 +29,12 @@ const getLanguages = async (options = {}) => {
     languages: toCamelCaseObject(result.languages),
     total: result.total,
     page: parseInt(page, 10),
-    limit: effectiveLimit, // Trả về limit đã dùng
+    limit: effectiveLimit,
     totalPages:
       effectiveLimit > 0 ? Math.ceil(result.total / effectiveLimit) : 1,
   };
-  // Nếu không phân trang, page và totalPages có thể không cần thiết hoặc đặt là 1
   if (effectiveLimit === 0) {
-    response.limit = result.total; // Nếu lấy tất cả, limit bằng total
+    response.limit = result.total;
     response.page = 1;
     response.totalPages = 1;
   }
@@ -53,7 +50,7 @@ const getLanguages = async (options = {}) => {
 const getLanguageByCode = async (languageCode) => {
   const language = await languageRepository.findLanguageByCode(
     languageCode.toLowerCase()
-  ); // Chuẩn hóa code
+  );
   if (!language) {
     throw new ApiError(httpStatus.NOT_FOUND, 'Không tìm thấy ngôn ngữ.');
   }
@@ -68,9 +65,8 @@ const getLanguageByCode = async (languageCode) => {
 const createLanguage = async (langData) => {
   const { languageCode, languageName, nativeName, isActive, displayOrder } =
     langData;
-  // Repo đã check trùng LanguageCode (PK) và LanguageName (UQ)
   const dataToSave = {
-    LanguageCode: languageCode.toLowerCase(), // Chuẩn hóa code
+    LanguageCode: languageCode.toLowerCase(),
     LanguageName: languageName,
     NativeName: nativeName,
     IsActive: isActive,
@@ -87,11 +83,10 @@ const createLanguage = async (langData) => {
  */
 const updateLanguage = async (languageCode, updateData) => {
   const code = languageCode.toLowerCase();
-  await getLanguageByCode(code); // Check existence
+  await getLanguageByCode(code);
 
   const dataToUpdate = { ...updateData };
-  // Loại bỏ các trường không được phép sửa trực tiếp hoặc không có giá trị
-  delete dataToUpdate.languageCode; // Không cho sửa PK
+  delete dataToUpdate.languageCode;
 
   if (Object.keys(dataToUpdate).length === 0) {
     throw new ApiError(
@@ -105,8 +100,7 @@ const updateLanguage = async (languageCode, updateData) => {
     dataToUpdate
   );
   if (!updatedLanguage && Object.keys(dataToUpdate).length > 0) {
-    // Nếu có gửi data mà repo trả về null (ko có dòng nào update)
-    return getLanguageByCode(code); // Trả về data hiện tại
+    return getLanguageByCode(code);
   }
   return updatedLanguage;
 };
@@ -118,8 +112,7 @@ const updateLanguage = async (languageCode, updateData) => {
  */
 const deleteLanguage = async (languageCode) => {
   const code = languageCode.toLowerCase();
-  await getLanguageByCode(code); // Check existence
-  // Repository sẽ xử lý lỗi FK nếu ngôn ngữ đang được dùng
+  await getLanguageByCode(code);
   const deletedCount = await languageRepository.deleteLanguage(code);
   if (deletedCount === 0) {
     throw new ApiError(

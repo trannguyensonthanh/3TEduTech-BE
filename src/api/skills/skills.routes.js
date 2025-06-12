@@ -10,22 +10,29 @@ const Roles = require('../../core/enums/Roles');
 
 const router = express.Router();
 
-// Route lấy danh sách skills (có thể mở public hoặc yêu cầu login)
+/**
+ * Lấy danh sách skills
+ */
 router.get(
   '/',
   validate(skillsValidation.getSkills),
   skillsController.getSkills
 );
 
-// Các routes cần quyền Admin
 router.use(authenticate, authorize([Roles.ADMIN, Roles.SUPERADMIN]));
 
+/**
+ * Tạo skill mới
+ */
 router.post(
   '/',
   validate(skillsValidation.createSkill),
   skillsController.createSkill
 );
 
+/**
+ * Lấy, cập nhật, hoặc xóa skill theo ID
+ */
 router
   .route('/:skillId')
   .get(validate(skillsValidation.getSkill), skillsController.getSkill)

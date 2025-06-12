@@ -9,18 +9,22 @@ const {
 const Roles = require('../../core/enums/Roles');
 
 const router = express.Router();
+router.use(authenticate);
 
-// Tất cả các route này yêu cầu quyền Admin/SuperAdmin
-router.use(authenticate, authorize([Roles.ADMIN, Roles.SUPERADMIN]));
-
-// Lấy tất cả settings
+/**
+ * Lấy tất cả settings
+ */
 router.get(
   '/',
-  validate(settingsValidation.getSettings), // Validation có thể rỗng
+  validate(settingsValidation.getSettings),
   settingsController.getSettings
 );
 
-// Cập nhật một setting theo key
+router.use(authorize([Roles.ADMIN, Roles.SUPERADMIN]));
+
+/**
+ * Cập nhật một setting theo key
+ */
 router.patch(
   '/:settingKey',
   validate(settingsValidation.updateSetting),

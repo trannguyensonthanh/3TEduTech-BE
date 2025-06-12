@@ -3,6 +3,9 @@ const levelRepository = require('./levels.repository');
 const ApiError = require('../../core/errors/ApiError');
 const { toCamelCaseObject } = require('../../utils/caseConverter');
 
+/**
+ * Tạo cấp độ mới
+ */
 const createLevel = async (levelData) => {
   const { levelName } = levelData;
   const existingName = await levelRepository.findLevelByName(levelName);
@@ -12,12 +15,17 @@ const createLevel = async (levelData) => {
   return levelRepository.createLevel({ levelName });
 };
 
+/**
+ * Lấy danh sách cấp độ
+ */
 const getLevels = async () => {
   const levels = await levelRepository.findAllLevels();
-
   return toCamelCaseObject(levels);
 };
 
+/**
+ * Lấy thông tin cấp độ theo ID
+ */
 const getLevel = async (levelId) => {
   const level = await levelRepository.findLevelById(levelId);
   if (!level) {
@@ -26,8 +34,11 @@ const getLevel = async (levelId) => {
   return toCamelCaseObject(level);
 };
 
+/**
+ * Cập nhật cấp độ
+ */
 const updateLevel = async (levelId, updateData) => {
-  const level = await getLevel(levelId); // Check existence
+  const level = await getLevel(levelId);
   const { levelName } = updateData;
 
   if (levelName && levelName !== level.LevelName) {
@@ -40,11 +51,14 @@ const updateLevel = async (levelId, updateData) => {
     });
     return updatedLevel;
   }
-  return level; // Return current if no change
+  return level;
 };
 
+/**
+ * Xóa cấp độ
+ */
 const deleteLevel = async (levelId) => {
-  await getLevel(levelId); // Check existence
+  await getLevel(levelId);
   const courseCount = await levelRepository.countCoursesInLevel(levelId);
   if (courseCount > 0) {
     throw new ApiError(

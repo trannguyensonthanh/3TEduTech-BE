@@ -3,7 +3,7 @@ const PaymentStatus = Object.freeze({
   SUCCESS: 'SUCCESS',
   FAILED: 'FAILED',
   CANCELLED: 'CANCELLED',
-  REFUNDED: 'REFUNDED', // Thêm nếu cần
+  REFUNDED: 'REFUNDED',
 });
 
 module.exports = PaymentStatus;

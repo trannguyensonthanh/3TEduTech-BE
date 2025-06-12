@@ -11,7 +11,7 @@ const Roles = require('../../core/enums/Roles');
 const router = express.Router();
 
 // Các route này yêu cầu vai trò Instructor
-router.use(authenticate, authorize([Roles.INSTRUCTOR]));
+router.use(authenticate, authorize([Roles.INSTRUCTOR, Roles.SUPERADMIN]));
 
 router
   .route('/')
@@ -34,7 +34,6 @@ router
     payoutMethodController.updateMyPayoutMethod
   )
   .put(
-    // Dùng PUT để cập nhật chi tiết, vì nó mang tính thay thế object details
     validate(payoutMethodValidation.updatePayoutMethodDetails),
     payoutMethodController.updateMyPayoutMethodDetails
   )

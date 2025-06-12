@@ -1,4 +1,3 @@
-// src/api/lessons/subtitle.routes.js
 const express = require('express');
 const validate = require('../../middlewares/validation.middleware');
 const subtitleValidation = require('./subtitle.validation');
@@ -9,13 +8,10 @@ const {
 } = require('../../middlewares/auth.middleware');
 const Roles = require('../../core/enums/Roles');
 
-// Router này sẽ được mount vào /lessons/:lessonId/subtitles
-const router = express.Router({ mergeParams: true }); // Cần mergeParams để lấy lessonId
+const router = express.Router({ mergeParams: true });
 
-// Lấy danh sách phụ đề (có thể cần authenticate hoặc không tùy logic xem)
 router.get(
   '/',
-  // authenticate, // Bỏ authenticate nếu muốn public có thể xem list?
   validate(subtitleValidation.getSubtitles),
   subtitleController.getSubtitles
 );
@@ -26,8 +22,8 @@ router.use(
   authorize([Roles.INSTRUCTOR, Roles.ADMIN, Roles.SUPERADMIN])
 );
 
+// Thêm phụ đề mới
 router.post(
-  // Thêm phụ đề mới
   '/',
   (req, res, next) => {
     console.log('Request Body:', req.body);
@@ -39,18 +35,18 @@ router.post(
   subtitleController.addSubtitle
 );
 
+// Cập nhật phụ đề
 router.patch(
-  // Cập nhật phụ đề
   '/:subtitleId/set-primary',
   validate(subtitleValidation.setPrimary),
   subtitleController.setPrimarySubtitle
 );
 
+// Xóa phụ đề
 router.delete(
-  // Xóa phụ đề
   '/:subtitleId',
   validate(subtitleValidation.deleteSubtitle),
   subtitleController.deleteSubtitle
 );
 
-module.exports = router; // Export router này
+module.exports = router;

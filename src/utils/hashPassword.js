@@ -6,7 +6,6 @@ const bcrypt = require('bcryptjs');
  * @returns {Promise<string>} - Mật khẩu đã được hash.
  */
 const hashPassword = async (password) => {
-  // Số vòng salt, 8-12 thường là đủ cân bằng giữa bảo mật và hiệu năng
   const saltRounds = 10;
   return bcrypt.hash(password, saltRounds);
 };

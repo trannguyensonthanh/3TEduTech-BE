@@ -1,9 +1,10 @@
 const httpStatus = require('http-status').status;
 const progressRepository = require('./progress.repository');
-const lessonRepository = require('../lessons/lessons.repository'); // Để kiểm tra lesson
-const enrollmentService = require('../enrollments/enrollments.service'); // Để kiểm tra enrollment
+const lessonRepository = require('../lessons/lessons.repository');
+const enrollmentService = require('../enrollments/enrollments.service');
 const ApiError = require('../../core/errors/ApiError');
 const logger = require('../../utils/logger');
+const Roles = require('../../core/enums/Roles');
 
 /**
  * Đánh dấu bài học là hoàn thành/chưa hoàn thành.
@@ -12,40 +13,33 @@ const logger = require('../../utils/logger');
  * @param {boolean} isCompleted
  * @returns {Promise<object>} - Bản ghi progress đã cập nhật.
  */
-const markLessonCompletion = async (accountId, lessonId, isCompleted) => {
-  // 1. Kiểm tra lesson tồn tại
+const markLessonCompletion = async (user, lessonId, isCompleted) => {
+  const accountId = user.id;
+  const isAdmin = user.role === Roles.ADMIN || user.role === Roles.SUPERADMIN;
   const lesson = await lessonRepository.findLessonById(lessonId);
   if (!lesson) {
     throw new ApiError(httpStatus.NOT_FOUND, 'Bài học không tồn tại.');
   }
-
-  // 2. Kiểm tra người dùng đã đăng ký khóa học chưa
   const enrolled = await enrollmentService.isUserEnrolled(
     accountId,
     lesson.CourseID
   );
-  if (!enrolled) {
+  if (!enrolled && !isAdmin) {
     throw new ApiError(
       httpStatus.FORBIDDEN,
       'Bạn cần đăng ký khóa học để cập nhật tiến độ.'
     );
   }
-
-  // 3. Tìm hoặc tạo bản ghi progress
   const progress = await progressRepository.findOrCreateProgress(
     accountId,
     lessonId
   );
-
-  // 4. Cập nhật trạng thái hoàn thành
   const updateData = { IsCompleted: isCompleted };
   const updatedProgress = await progressRepository.updateProgressById(
     progress.ProgressID,
     updateData
   );
-
   if (!updatedProgress) {
-    // Nếu repo trả về null (chỉ cập nhật LastWatchedAt), lấy lại bản ghi gốc
     const currentProgress = await progressRepository.findOrCreateProgress(
       accountId,
       lessonId
@@ -55,7 +49,6 @@ const markLessonCompletion = async (accountId, lessonId, isCompleted) => {
     );
     return currentProgress;
   }
-
   logger.info(
     `Lesson ${lessonId} completion status for user ${accountId} updated to ${isCompleted}.`
   );
@@ -74,14 +67,10 @@ const updateLastWatchedPosition = async (
   lessonId,
   positionSeconds
 ) => {
-  // 1. Kiểm tra lesson tồn tại
   const lesson = await lessonRepository.findLessonById(lessonId);
   if (!lesson) {
     throw new ApiError(httpStatus.NOT_FOUND, 'Bài học không tồn tại.');
   }
-  // Có thể kiểm tra lesson type là video ở đây
-
-  // 2. Kiểm tra enrollment
   const enrolled = await enrollmentService.isUserEnrolled(
     accountId,
     lesson.CourseID
@@ -92,20 +81,15 @@ const updateLastWatchedPosition = async (
       'Bạn cần đăng ký khóa học để cập nhật tiến độ.'
     );
   }
-
-  // 3. Tìm hoặc tạo progress
   const progress = await progressRepository.findOrCreateProgress(
     accountId,
     lessonId
   );
-
-  // 4. Cập nhật vị trí
   const updateData = { LastWatchedPosition: positionSeconds };
   const updatedProgress = await progressRepository.updateProgressById(
     progress.ProgressID,
     updateData
   );
-
   if (!updatedProgress) {
     const currentProgress = await progressRepository.findOrCreateProgress(
       accountId,
@@ -128,14 +112,19 @@ const updateLastWatchedPosition = async (
  * @param {number} courseId
  * @returns {Promise<{totalLessons: number, completedLessons: number, percentage: number, progressDetails: object[]}>}
  */
-const getCourseProgress = async (accountId, courseId) => {
-  // Kiểm tra enrollment
+const getCourseProgress = async (user, courseId) => {
+  const accountId = user.id;
+  const isAdmin = user.role === Roles.ADMIN || user.role === Roles.SUPERADMIN;
+  logger.info(
+    `Getting course progress for user ${accountId}, course ${courseId}.`
+  );
   const enrolled = await enrollmentService.isUserEnrolled(accountId, courseId);
-  if (!enrolled) {
-    // Hoặc trả về progress = 0 thay vì lỗi? Tùy logic hiển thị
+  if (!enrolled && !isAdmin) {
+    logger.error(
+      `User ${accountId} attempted to access progress for course ${courseId} without enrollment.`
+    );
     throw new ApiError(httpStatus.FORBIDDEN, 'Bạn chưa đăng ký khóa học này.');
   }
-
   const totalLessons =
     await progressRepository.countTotalLessonsInCourse(courseId);
   if (totalLessons === 0) {
@@ -146,22 +135,18 @@ const getCourseProgress = async (accountId, courseId) => {
       progressDetails: [],
     };
   }
-
   const completedLessons =
     await progressRepository.countCompletedLessonsInCourse(accountId, courseId);
   const percentage = Math.round((completedLessons / totalLessons) * 100);
-
-  // Lấy chi tiết từng bài học (tùy chọn, có thể nặng nếu nhiều bài)
   const progressDetails = await progressRepository.findAllProgressInCourse(
     accountId,
     courseId
   );
-
   return {
     totalLessons,
     completedLessons,
     percentage,
-    progressDetails, // Mảng các bản ghi LessonProgress
+    progressDetails,
   };
 };
 

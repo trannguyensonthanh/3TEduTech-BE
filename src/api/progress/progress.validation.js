@@ -1,5 +1,8 @@
 const Joi = require('joi');
 
+/**
+ * Validation for marking lesson completion
+ */
 const markCompletion = {
   params: Joi.object().keys({
     lessonId: Joi.number().integer().required(),
@@ -9,15 +12,21 @@ const markCompletion = {
   }),
 };
 
+/**
+ * Validation for updating lesson position
+ */
 const updatePosition = {
   params: Joi.object().keys({
     lessonId: Joi.number().integer().required(),
   }),
   body: Joi.object().keys({
-    position: Joi.number().integer().min(0).required(), // Vị trí tính bằng giây
+    position: Joi.number().integer().min(0).required(),
   }),
 };
 
+/**
+ * Validation for getting course progress
+ */
 const getCourseProgress = {
   params: Joi.object().keys({
     courseId: Joi.number().integer().required(),

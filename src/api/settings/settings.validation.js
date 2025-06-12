@@ -1,15 +1,14 @@
 const Joi = require('joi');
 
-const getSettings = {
-  // Không cần query params đặc biệt
-};
+// Không cần query params đặc biệt
+const getSettings = {};
 
 const updateSetting = {
   params: Joi.object().keys({
-    settingKey: Joi.string().required(), // Key trong URL
+    settingKey: Joi.string().required(),
   }),
   body: Joi.object().keys({
-    value: Joi.string().required(), // Giá trị mới gửi lên dạng string
+    value: Joi.string().required(),
   }),
 };
 

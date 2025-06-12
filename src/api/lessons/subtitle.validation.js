@@ -6,12 +6,11 @@ const addSubtitle = {
     lessonId: Joi.number().integer().required(),
   }),
   body: Joi.object().keys({
-    languageCode: Joi.string().required().max(10).trim().lowercase(), // vd: vi, en
+    languageCode: Joi.string().required().max(10).trim().lowercase(),
     subtitleUrl: Joi.string()
       .uri({ allowRelative: false })
       .required()
-      .max(1000), // Yêu cầu URL
-    // subtitlePublicId: Joi.string().optional().allow(null, ''), // Nếu dùng private
+      .max(1000),
     isDefault: Joi.boolean().optional(),
   }),
 };

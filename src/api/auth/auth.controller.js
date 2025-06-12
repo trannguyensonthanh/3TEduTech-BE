@@ -1,4 +1,3 @@
-// đường dẫn: src/api/auth/auth.controller.js
 const httpStatus = require('http-status').status;
 const authService = require('./auth.service');
 const { catchAsync } = require('../../utils/catchAsync');

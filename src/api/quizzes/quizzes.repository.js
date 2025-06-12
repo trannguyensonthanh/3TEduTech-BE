@@ -4,8 +4,6 @@ const { getConnection, sql } = require('../../database/connection');
 const { toPascalCaseObject } = require('../../utils/caseConverter');
 const logger = require('../../utils/logger');
 
-// === Question & Option Management (Instructor) ===
-
 /**
  * Tạo câu hỏi mới cho một bài học quiz.
  * @param {object} questionData - { LessonID, QuestionText, Explanation, QuestionOrder }
@@ -67,11 +65,10 @@ const createOptionsForQuestion = async (
 const findQuestionByIdWithOptions = async (questionId) => {
   try {
     const pool = await getConnection();
-    // Lấy câu hỏi
     const questionRequest = pool.request();
     questionRequest.input('QuestionID', sql.Int, questionId);
     const questionResult = await questionRequest.query(`
-             SELECT q.*, l.SectionID, s.CourseID -- Lấy thêm ID để kiểm tra quyền
+             SELECT q.*, l.SectionID, s.CourseID
              FROM QuizQuestions q
              JOIN Lessons l ON q.LessonID = l.LessonID
              JOIN Sections s ON l.SectionID = s.SectionID
@@ -81,13 +78,12 @@ const findQuestionByIdWithOptions = async (questionId) => {
 
     if (!question) return null;
 
-    // Lấy các lựa chọn
     const optionsRequest = pool.request();
     optionsRequest.input('QuestionID', sql.Int, questionId);
     const optionsResult = await optionsRequest.query(`
             SELECT * FROM QuizOptions WHERE QuestionID = @QuestionID ORDER BY OptionOrder ASC;
         `);
-    question.options = optionsResult.recordset; // Gắn options vào object question
+    question.options = optionsResult.recordset;
 
     return question;
   } catch (error) {
@@ -108,7 +104,6 @@ const findQuestionsWithOptionsByLessonId = async (
 ) => {
   try {
     const pool = await getConnection();
-    // Lấy tất cả câu hỏi của lesson
     const questionsRequest = pool.request();
     questionsRequest.input('LessonID', sql.BigInt, lessonId);
     const questionsResult = await questionsRequest.query(`
@@ -118,9 +113,7 @@ const findQuestionsWithOptionsByLessonId = async (
 
     if (questions.length === 0) return [];
 
-    // Lấy tất cả options của các câu hỏi đó trong 1 query
     const questionIds = questions.map((q) => q.QuestionID);
-    // Tạo chuỗi parameter placeholders: @id0, @id1,...
     const idParams = questionIds.map((id, index) => `@id${index}`);
     const optionsRequest = pool.request();
     questionIds.forEach((id, index) =>
@@ -135,19 +128,16 @@ const findQuestionsWithOptionsByLessonId = async (
     const optionsResult = await optionsRequest.query(optionsQuery);
     const allOptions = optionsResult.recordset;
 
-    // Phân phối options vào đúng question
     questions.forEach((q) => {
       q.options = allOptions
         .filter((opt) => opt.QuestionID === q.QuestionID)
         .map((opt) => {
-          // Chỉ trả về IsCorrectAnswer nếu được yêu cầu
           if (!showCorrectAnswer) {
-            // Clone object để không sửa đổi bản gốc trong cache (nếu có)
             const publicOption = { ...opt };
             delete publicOption.IsCorrectAnswer;
             return publicOption;
           }
-          return opt; // Trả về đầy đủ nếu showCorrectAnswer=true
+          return opt;
         });
     });
 
@@ -168,7 +158,7 @@ const updateQuestionById = async (questionId, updateData) => {
   try {
     const pool = await getConnection();
     const request = pool.request();
-    const updataToPascal = toPascalCaseObject(updateData); // Chuyển đổi sang PascalCase
+    const updataToPascal = toPascalCaseObject(updateData);
     request.input('QuestionID', sql.Int, questionId);
     request.input('UpdatedAt', sql.DateTime2, new Date());
 
@@ -220,8 +210,6 @@ const deleteOptionsByQuestionId = async (questionId, transaction) => {
  * @returns {Promise<number>} - Số dòng bị ảnh hưởng.
  */
 const deleteQuestionById = async (questionId) => {
-  // Cần xóa options trước hoặc đảm bảo FK có ON DELETE CASCADE
-  // Giả sử FK QuizOptions -> QuizQuestions có ON DELETE CASCADE
   try {
     const pool = await getConnection();
     const request = pool.request();
@@ -233,7 +221,6 @@ const deleteQuestionById = async (questionId) => {
   } catch (error) {
     logger.error(`Error deleting question ${questionId}:`, error);
     if (error.number === 547) {
-      // Nếu FK không cascade và có options
       throw new ApiError(
         httpStatus.BAD_REQUEST,
         'Không thể xóa câu hỏi vì có lựa chọn liên quan.'
@@ -242,8 +229,6 @@ const deleteQuestionById = async (questionId) => {
     throw error;
   }
 };
-
-// === Quiz Attempt & Answer (Student) ===
 
 /**
  * Lấy số lần thử quiz lớn nhất của user cho lesson.
@@ -284,7 +269,6 @@ const createQuizAttempt = async (attemptData) => {
     request.input('LessonID', sql.BigInt, attemptData.LessonID);
     request.input('AccountID', sql.BigInt, attemptData.AccountID);
     request.input('AttemptNumber', sql.Int, attemptData.AttemptNumber);
-    // StartedAt dùng default GETDATE()
 
     const result = await request.query(`
             INSERT INTO QuizAttempts (LessonID, AccountID, AttemptNumber)
@@ -295,11 +279,10 @@ const createQuizAttempt = async (attemptData) => {
   } catch (error) {
     logger.error('Error creating quiz attempt:', error);
     if (error.number === 2627 || error.number === 2601) {
-      // Unique constraint
       throw new ApiError(
         httpStatus.INTERNAL_SERVER_ERROR,
         'Lỗi khi tạo lượt làm bài (trùng lặp).'
-      ); // Lỗi này không nên xảy ra nếu logic service đúng
+      );
     }
     throw error;
   }
@@ -316,7 +299,7 @@ const saveAttemptAnswers = async (answersData, transaction) => {
     const request = transaction.request();
     request.input('AttemptID', sql.BigInt, answer.AttemptID);
     request.input('QuestionID', sql.Int, answer.QuestionID);
-    request.input('SelectedOptionID', sql.BigInt, answer.SelectedOptionID); // Có thể là NULL nếu không chọn
+    request.input('SelectedOptionID', sql.BigInt, answer.SelectedOptionID);
 
     await request.query(`
       INSERT INTO QuizAttemptAnswers (AttemptID, QuestionID, SelectedOptionID)
@@ -342,7 +325,6 @@ const getCorrectOptionsForLesson = async (lessonId) => {
             JOIN QuizQuestions q ON opt.QuestionID = q.QuestionID
             WHERE q.LessonID = @LessonID AND opt.IsCorrectAnswer = 1;
         `);
-    // Giả sử mỗi câu chỉ có 1 đáp án đúng
     const correctOptionsMap = new Map();
     result.recordset.forEach((row) => {
       correctOptionsMap.set(row.QuestionID, row.OptionID);
@@ -442,14 +424,14 @@ const findQuizAttemptDetails = async (attemptId) => {
                         WHERE opt.QuestionID = q.QuestionID
                         ORDER BY opt.OptionOrder ASC
                         FOR JSON PATH
-                    ) AS OptionsJSON  -- Lấy tất cả options của câu hỏi này dưới dạng JSON array
+                    ) AS OptionsJSON
                 FROM QuizAttemptAnswers qaa
                 JOIN QuizQuestions q ON qaa.QuestionID = q.QuestionID
                 LEFT JOIN QuizOptions so ON qaa.SelectedOptionID = so.OptionID
                 LEFT JOIN QuizOptions co ON q.QuestionID = co.QuestionID AND co.IsCorrectAnswer = 1
-                WHERE qaa.AttemptID = qa.AttemptID -- Liên kết với AttemptID của query chính
+                WHERE qaa.AttemptID = qa.AttemptID
                 ORDER BY q.QuestionOrder ASC
-                FOR JSON PATH -- Trả về toàn bộ details dưới dạng JSON array
+                FOR JSON PATH
             ) AS DetailsJSON
         FROM QuizAttempts qa
         JOIN Lessons l ON qa.LessonID = l.LessonID
@@ -464,7 +446,6 @@ const findQuizAttemptDetails = async (attemptId) => {
 
     if (!attemptDetails) return null;
 
-    // Parse JSON
     if (result.recordset[0].DetailsJSON) {
       const details =
         typeof result.recordset[0].DetailsJSON === 'string'
@@ -612,7 +593,6 @@ const findAllQuestionsWithOptionsByLessonIds = async (
   );
 
   try {
-    // 1. Lấy questions
     const questionsResult = await executor.query(`
           SELECT * FROM QuizQuestions
           WHERE LessonID IN (${lessonIdPlaceholders})
@@ -621,11 +601,9 @@ const findAllQuestionsWithOptionsByLessonIds = async (
     const questions = questionsResult.recordset;
     if (questions.length === 0) return [];
 
-    // 2. Lấy options
     const questionIds = questions.map((q) => q.QuestionID);
-    const options = await findAllOptionsByQuestionIds(questionIds, transaction); // Dùng hàm lấy options theo list IDs
+    const options = await findAllOptionsByQuestionIds(questionIds, transaction);
 
-    // 3. Gắn options vào questions
     const optionsMap = new Map();
     options.forEach((opt) => {
       if (!optionsMap.has(opt.QuestionID)) {
@@ -634,7 +612,7 @@ const findAllQuestionsWithOptionsByLessonIds = async (
 
       const optionData = showCorrectAnswer
         ? opt
-        : { ...opt, IsCorrectAnswer: undefined }; // Ẩn đáp án nếu cần
+        : { ...opt, IsCorrectAnswer: undefined };
 
       optionsMap.get(opt.QuestionID).push(optionData);
     });
@@ -642,7 +620,7 @@ const findAllQuestionsWithOptionsByLessonIds = async (
     questions.forEach((q) => {
       q.options = (optionsMap.get(q.QuestionID) || []).sort(
         (a, b) => (a.OptionOrder ?? 0) - (b.OptionOrder ?? 0)
-      ); // Gắn và sắp xếp
+      );
     });
 
     return questions;
@@ -726,12 +704,10 @@ const deleteOptionsByIds = async (optionIds, transaction) => {
 const updateOptionsBatch = async (optionsToUpdate, transaction) => {
   if (!optionsToUpdate || optionsToUpdate.length === 0) return;
   logger.debug(`Batch updating ${optionsToUpdate.length} options...`);
-  // Thực hiện từng update một trong transaction cho đơn giản
   for (const optUpdate of optionsToUpdate) {
     const request = transaction.request();
     request.input('OptionID', sql.BigInt, optUpdate.id);
     const setClauses = [];
-    // Add fields to update (OptionText, IsCorrectAnswer, OptionOrder)
     if (optUpdate.data.OptionText !== undefined) {
       request.input('OptionText', sql.NVarChar, optUpdate.data.OptionText);
       setClauses.push('OptionText = @OptionText');
@@ -761,7 +737,6 @@ const updateOptionsBatch = async (optionsToUpdate, transaction) => {
 const insertOptionsBatch = async (optionsToCreate, transaction) => {
   if (!optionsToCreate || optionsToCreate.length === 0) return;
   logger.debug(`Batch inserting ${optionsToCreate.length} options...`);
-  // Thực hiện từng insert một trong transaction
   for (const optCreate of optionsToCreate) {
     const request = transaction.request();
     request.input('QuestionID', sql.Int, optCreate.QuestionID);
@@ -779,7 +754,6 @@ const insertOptionsBatch = async (optionsToCreate, transaction) => {
 };
 
 module.exports = {
-  // Question & Option Management
   createQuestion,
   createOptionsForQuestion,
   findQuestionByIdWithOptions,
@@ -787,7 +761,6 @@ module.exports = {
   updateQuestionById,
   deleteOptionsByQuestionId,
   deleteQuestionById,
-  // Quiz Attempts & Answers
   getMaxAttemptNumber,
   createQuizAttempt,
   saveAttemptAnswers,
@@ -797,10 +770,10 @@ module.exports = {
   findQuizAttemptDetails,
   findAttemptsByLessonAndUser,
   getMaxQuestionOrder,
-  findAllQuestionsWithOptionsByLessonIds, // Thêm
-  findAllOptionsByQuestionIds, // Thêm
-  deleteQuestionsByIds, // Thêm
-  deleteOptionsByIds, // Thêm
-  updateOptionsBatch, // Thêm
-  insertOptionsBatch, // Thêm
+  findAllQuestionsWithOptionsByLessonIds,
+  findAllOptionsByQuestionIds,
+  deleteQuestionsByIds,
+  deleteOptionsByIds,
+  updateOptionsBatch,
+  insertOptionsBatch,
 };

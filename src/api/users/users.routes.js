@@ -17,24 +17,23 @@ const router = express.Router();
 // --- Routes for Current Logged-in User ---
 router
   .route('/me')
-  .get(authenticate, userController.getMyProfile) // Mọi user đã đăng nhập đều có thể lấy profile của mình
+  .get(authenticate, userController.getMyProfile)
   .patch(
     authenticate,
     validate(userValidation.updateUserProfile),
     userController.updateMyProfile
-  ); // Mọi user đã đăng nhập có thể cập nhật profile
+  );
 
 // --- Route mới để Upload Avatar ---
 router.patch(
   '/me/avatar',
   authenticate,
-  uploadImage.single('avatar'), // Middleware nhận file từ field 'avatar'
-  handleMulterError, // Middleware xử lý lỗi multer
-  userController.updateMyAvatar // Controller method mới
+  uploadImage.single('avatar'),
+  handleMulterError,
+  userController.updateMyAvatar
 );
 
 // --- Routes for Admin ---
-// Chỉ Admin và SuperAdmin mới có quyền truy cập các route này
 router
   .route('/')
   .get(
@@ -52,9 +51,6 @@ router
     validate(userValidation.getUser),
     userController.getUser
   );
-// Cân nhắc tách các route cập nhật status/role riêng
-// .patch(authenticate, authorize([Roles.ADMIN, Roles.SUPERADMIN]), validate(userValidation.updateUser), userController.updateUser) // Có thể là route cập nhật chung
-// .delete(authenticate, authorize([Roles.ADMIN, Roles.SUPERADMIN]), validate(userValidation.deleteUser), userController.deleteUser);
 
 router.patch(
   '/:userId/status',

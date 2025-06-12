@@ -11,9 +11,8 @@ const Roles = require('../../core/enums/Roles');
 const router = express.Router();
 
 // Public route to get all levels
-router.get('/', levelController.getLevels); // Mở cho tất cả
+router.get('/', levelController.getLevels);
 
-// Admin routes
 router.post(
   '/',
   authenticate,
@@ -24,11 +23,7 @@ router.post(
 
 router
   .route('/:levelId')
-  .get(
-    // authenticate, // Có thể mở public
-    validate(levelValidation.getLevel),
-    levelController.getLevel
-  )
+  .get(validate(levelValidation.getLevel), levelController.getLevel)
   .patch(
     authenticate,
     authorize([Roles.ADMIN, Roles.SUPERADMIN]),

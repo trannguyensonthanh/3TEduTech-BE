@@ -1,20 +1,17 @@
 // src/api/payments/paymentMethod.service.js
-const httpStatus = require('http-status');
+const httpStatus = require('http-status').status;
 const paymentMethodRepository = require('./paymentMethod.repository');
 const ApiError = require('../../core/errors/ApiError');
 const logger = require('../../utils/logger');
-// Có thể cần import repository khác để kiểm tra ràng buộc trước khi xóa
-// const instructorPayoutMethodRepository = require('../instructors/payoutMethod.repository');
+const { toCamelCaseObject } = require('../../utils/caseConverter');
 
 /**
  * Lấy danh sách tất cả phương thức thanh toán khả dụng.
  * @returns {Promise<Array<object>>}
  */
 const getAvailablePaymentMethods = async () => {
-  // Lấy từ cache/DB
   const methods = await paymentMethodRepository.findAllMethods();
-  // Có thể filter bớt các method không muốn hiển thị ở đây nếu cần
-  return methods;
+  return toCamelCaseObject(methods);
 };
 
 /**
@@ -23,11 +20,12 @@ const getAvailablePaymentMethods = async () => {
  * @returns {Promise<object>}
  */
 const createPaymentMethod = async (methodData) => {
-  const { methodId, methodName } = methodData;
-  // Repository đã xử lý lỗi trùng MethodID
+  const { methodId, methodName, iconUrl, description } = methodData;
   return paymentMethodRepository.createMethod({
-    MethodID: methodId.toUpperCase(), // Chuẩn hóa ID thành chữ hoa?
+    MethodID: methodId.toUpperCase(),
     MethodName: methodName,
+    IconUrl: iconUrl,
+    Description: description,
   });
 };
 
@@ -44,7 +42,7 @@ const getPaymentMethod = async (methodId) => {
       'Không tìm thấy phương thức thanh toán.'
     );
   }
-  return method;
+  return toCamelCaseObject(method);
 };
 
 /**
@@ -54,20 +52,29 @@ const getPaymentMethod = async (methodId) => {
  * @returns {Promise<object>}
  */
 const updatePaymentMethod = async (methodId, updateData) => {
-  await getPaymentMethod(methodId); // Check existence
+  await getPaymentMethod(methodId);
   const { methodName } = updateData;
   if (!methodName) {
     throw new ApiError(httpStatus.BAD_REQUEST, 'Cần cung cấp tên mới.');
   }
-  const updatedMethod = await paymentMethodRepository.updateMethodById(
-    methodId,
-    { MethodName: methodName }
+  const dataToUpdate = {
+    MethodName: updateData.methodName,
+    IconUrl: updateData.iconUrl,
+    Description: updateData.description,
+  };
+  Object.keys(dataToUpdate).forEach(
+    (key) => dataToUpdate[key] === undefined && delete dataToUpdate[key]
   );
-  if (!updatedMethod) {
-    // Trường hợp không có gì thay đổi
+
+  if (Object.keys(dataToUpdate).length === 0) {
     return getPaymentMethod(methodId);
   }
-  return updatedMethod;
+
+  const updatedMethod = await paymentMethodRepository.updateMethodById(
+    methodId,
+    dataToUpdate
+  );
+  return toCamelCaseObject(updatedMethod);
 };
 
 /**
@@ -76,15 +83,7 @@ const updatePaymentMethod = async (methodId, updateData) => {
  * @returns {Promise<void>}
  */
 const deletePaymentMethod = async (methodId) => {
-  await getPaymentMethod(methodId); // Check existence
-
-  // TODO (Quan trọng): Kiểm tra xem phương thức này có đang được sử dụng không?
-  // Ví dụ: Kiểm tra trong InstructorPayoutMethods, CoursePayments,...
-  // const usageCount = await instructorPayoutMethodRepository.countUsage(methodId); // Cần tạo hàm này
-  // if (usageCount > 0) {
-  //     throw new ApiError(httpStatus.BAD_REQUEST, `Không thể xóa phương thức vì đang được ${usageCount} cấu hình sử dụng.`);
-  // }
-  // Repo delete đã có xử lý lỗi FK, nhưng check trước vẫn tốt hơn.
+  await getPaymentMethod(methodId);
 
   const deletedCount = await paymentMethodRepository.deleteMethodById(methodId);
   if (deletedCount === 0) {
@@ -98,7 +97,6 @@ const deletePaymentMethod = async (methodId) => {
 
 module.exports = {
   getAvailablePaymentMethods,
-  // Admin functions
   createPaymentMethod,
   getPaymentMethod,
   updatePaymentMethod,

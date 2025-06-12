@@ -6,23 +6,19 @@ const PaymentMethod = require('../../core/enums/PaymentMethod');
 const WithdrawalStatus = require('../../core/enums/WithdrawalStatus');
 const PayoutStatus = require('../../core/enums/PayoutStatus');
 
-// const requestWithdrawal = {
-//   body: Joi.object().keys({
-//     requestedAmount: Joi.number().positive().required(),
-//     requestedCurrencyId: Joi.string().required().valid(Currency.VND), // Chỉ cho VND
-//     paymentMethodId: Joi.string().required().valid(PaymentMethod.BANK_TRANSFER), // Chỉ cho Bank
-//     instructorNotes: Joi.string().allow(null, ''),
-//   }),
-// };
-
+// Yêu cầu rút tiền
 const requestWithdrawal = {
   body: Joi.object().keys({
-    amount: Joi.number().positive().required(), // Đổi tên từ requestedAmount
-    instructorPayoutMethodId: Joi.number().integer().required(), // ID của InstructorPayoutMethods
-    notes: Joi.string().allow(null, ''), // Đổi tên từ instructorNotes
+    requestedAmount: Joi.number().positive().required(),
+    instructorPayoutMethodId: Joi.number().integer().required(),
+    notes: Joi.string().allow(null, ''),
+    requestedCurrencyId: Joi.string()
+      .required()
+      .valid(...Object.values(Currency)),
   }),
 };
 
+// Duyệt yêu cầu rút tiền
 const reviewWithdrawal = {
   params: Joi.object().keys({
     requestId: Joi.number().integer().required(),
@@ -35,6 +31,7 @@ const reviewWithdrawal = {
   }),
 };
 
+// Lấy danh sách payouts
 const getPayouts = {
   query: Joi.object().keys({
     page: Joi.number().integer().min(1),
@@ -46,6 +43,7 @@ const getPayouts = {
   }),
 };
 
+// Xử lý payout
 const processPayout = {
   params: Joi.object().keys({
     payoutId: Joi.number().integer().required(),
@@ -54,43 +52,34 @@ const processPayout = {
     status: Joi.string()
       .required()
       .valid(PayoutStatus.PAID, PayoutStatus.FAILED),
-    actualAmount: Joi.number().min(0).optional().allow(null), // Số tiền thực chuyển
+    actualAmount: Joi.number().min(0).optional().allow(null),
     actualCurrencyId: Joi.string()
       .valid(...Object.values(Currency))
       .optional()
-      .allow(null), // Tiền tệ thực chuyển
-    exchangeRate: Joi.number().positive().optional().allow(null), // Tỷ giá nếu có chuyển đổi
-    fee: Joi.number().min(0).optional().default(0), // Phí giao dịch
+      .allow(null),
+    exchangeRate: Joi.number().positive().optional().allow(null),
+    fee: Joi.number().min(0).optional().default(0),
     completedAt: Joi.date()
       .iso()
       .optional()
-      .default(() => new Date()), // Thời điểm hoàn thành
-    adminNotes: Joi.string().allow(null, ''), // Ghi chú thêm của admin
+      .default(() => new Date()),
+    adminNotes: Joi.string().allow(null, ''),
   }),
 };
-// // Thêm validation cho các API khác nếu cần (get history, process payout...)
-// const getMyWithdrawalHistory = {
-//   query: Joi.object().keys({
-//     page: Joi.number().integer().min(1),
-//     limit: Joi.number().integer().min(1).max(50),
-//     status: Joi.string()
-//       .valid(...Object.values(WithdrawalStatus))
-//       .allow(null, ''),
-//   }),
-// };
 
-// const getMyPayoutHistory = {
-//   query: Joi.object().keys({
-//     page: Joi.number().integer().min(1),
-//     limit: Joi.number().integer().min(1).max(50),
-//     statusId: Joi.string()
-//       .valid(...Object.values(PayoutStatus))
-//       .allow(null, ''),
-//   }),
-// };
+// Lấy danh sách yêu cầu rút tiền
+const getWithdrawalRequests = {
+  query: Joi.object().keys({
+    page: Joi.number().integer().min(1),
+    limit: Joi.number().integer().min(1).max(100),
+    status: Joi.string().valid(...Object.values(WithdrawalStatus)),
+    instructorId: Joi.number().integer(),
+    sortBy: Joi.string().pattern(/^[a-zA-Z]+:(asc|desc)$/),
+  }),
+};
 
+// Lấy giao dịch của tôi
 const getMyTransactions = {
-  // Đổi tên từ getMyRevenueDetails
   query: Joi.object().keys({
     page: Joi.number().integer().min(1),
     limit: Joi.number().integer().min(1).max(100),
@@ -104,12 +93,13 @@ const getMyTransactions = {
         'ADJUSTMENT_ADD',
         'ADJUSTMENT_SUB'
       )
-      .allow(null, ''), // Cho phép lọc theo Type
+      .allow(null, ''),
     startDate: Joi.date().iso().optional(),
-    endDate: Joi.date().iso().optional().min(Joi.ref('startDate')), // endDate phải sau startDate
+    endDate: Joi.date().iso().optional().min(Joi.ref('startDate')),
   }),
 };
 
+// Lịch sử hoạt động rút tiền
 const getWithdrawalActivityHistory = {
   query: Joi.object().keys({
     page: Joi.number().integer().min(1),
@@ -121,7 +111,7 @@ const getWithdrawalActivityHistory = {
         'COMPLETED',
         'FAILED',
         'REJECTED',
-        'CANCELLED' // Các trạng thái chung
+        'CANCELLED'
       )
       .optional()
       .allow(null, ''),
@@ -139,6 +129,7 @@ const getWithdrawalActivityHistory = {
   }),
 };
 
+// Lấy thu nhập theo tháng
 const getMonthlyEarnings = {
   query: Joi.object().keys({
     period: Joi.string()
@@ -148,6 +139,7 @@ const getMonthlyEarnings = {
   }),
 };
 
+// Lấy doanh thu theo khoá học
 const getRevenueByCourse = {
   query: Joi.object().keys({
     period: Joi.string()
@@ -161,8 +153,7 @@ module.exports = {
   reviewWithdrawal,
   getPayouts,
   processPayout,
-  // getMyWithdrawalHistory,
-  // getMyPayoutHistory,
+  getWithdrawalRequests,
   getMyTransactions,
   getWithdrawalActivityHistory,
   getMonthlyEarnings,

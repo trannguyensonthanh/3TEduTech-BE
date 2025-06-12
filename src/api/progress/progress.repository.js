@@ -23,16 +23,13 @@ const findOrCreateProgress = async (
   executor.input('LessonID', sql.BigInt, lessonId);
 
   try {
-    // Thử tìm trước
     let result = await executor.query(`
             SELECT * FROM LessonProgress WHERE AccountID = @AccountID AND LessonID = @LessonID;
         `);
 
     if (result.recordset.length > 0) {
-      return result.recordset[0]; // Trả về nếu đã tồn tại
+      return result.recordset[0];
     }
-    // Nếu không tồn tại, tạo mới
-    // Reset executor để thêm input mới (hoặc dùng request mới từ transaction/pool)
     const createExecutor = transaction
       ? transaction.request()
       : (await getConnection()).request();
@@ -53,15 +50,12 @@ const findOrCreateProgress = async (
     if (result.recordset.length > 0) {
       return result.recordset[0];
     }
-    // Lỗi không mong muốn khi insert không trả về output
     throw new Error('Failed to create lesson progress record.');
   } catch (error) {
-    // Xử lý lỗi unique constraint nếu có race condition khi tạo mới
     if (error.number === 2627 || error.number === 2601) {
       logger.warn(
         `Race condition detected during findOrCreateProgress for Account=${accountId}, Lesson=${lessonId}. Retrying find.`
       );
-      // Thử tìm lại một lần nữa
       const retryExecutor = transaction
         ? transaction.request()
         : (await getConnection()).request();
@@ -71,7 +65,7 @@ const findOrCreateProgress = async (
         `SELECT * FROM LessonProgress WHERE AccountID = @AccountID AND LessonID = @LessonID;`
       );
       if (retryResult.recordset[0]) return retryResult.recordset[0];
-      throw error; // Ném lỗi gốc nếu vẫn không tìm thấy
+      throw error;
     }
     logger.error(
       `Error in findOrCreateProgress for Account=${accountId}, Lesson=${lessonId}:`,
@@ -97,22 +91,19 @@ const updateProgressById = async (
     ? transaction.request()
     : (await getConnection()).request();
   executor.input('ProgressID', sql.BigInt, progressId);
-  executor.input('LastWatchedAt', sql.DateTime2, new Date()); // Luôn cập nhật LastWatchedAt
+  executor.input('LastWatchedAt', sql.DateTime2, new Date());
 
   const setClauses = ['LastWatchedAt = @LastWatchedAt'];
   if (updateData.IsCompleted !== undefined) {
     executor.input('IsCompleted', sql.Bit, updateData.IsCompleted);
     setClauses.push('IsCompleted = @IsCompleted');
     if (updateData.IsCompleted && updateData.CompletedAt === undefined) {
-      // Tự động set CompletedAt nếu IsCompleted=true và CompletedAt chưa được cung cấp
       executor.input('CompletedAt', sql.DateTime2, new Date());
       setClauses.push('CompletedAt = @CompletedAt');
     } else if (updateData.CompletedAt !== undefined) {
-      // Nếu CompletedAt được cung cấp
       executor.input('CompletedAt', sql.DateTime2, updateData.CompletedAt);
       setClauses.push('CompletedAt = @CompletedAt');
     } else if (!updateData.IsCompleted) {
-      // Nếu đánh dấu chưa hoàn thành, xóa CompletedAt
       executor.input('CompletedAt', sql.DateTime2, null);
       setClauses.push('CompletedAt = @CompletedAt');
     }
@@ -126,7 +117,7 @@ const updateProgressById = async (
     setClauses.push('LastWatchedPosition = @LastWatchedPosition');
   }
 
-  if (setClauses.length === 1) return null; // Không có gì thay đổi ngoài LastWatchedAt
+  if (setClauses.length === 1) return null;
 
   const query = `
         UPDATE LessonProgress
@@ -214,7 +205,6 @@ const countTotalLessonsInCourse = async (courseId) => {
     const pool = await getConnection();
     const request = pool.request();
     request.input('CourseID', sql.BigInt, courseId);
-    // Có thể loại trừ LessonType='QUIZ' nếu không tính vào tiến độ %
     request.input('QuizType', sql.VarChar, 'QUIZ');
     const result = await request.query(`
             SELECT COUNT(l.LessonID) as totalCount

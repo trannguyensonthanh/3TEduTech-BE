@@ -3,6 +3,9 @@ const httpStatus = require('http-status').status;
 const subtitleService = require('./subtitle.service');
 const { catchAsync } = require('../../utils/catchAsync');
 
+/**
+ * Lấy danh sách phụ đề cho bài học
+ */
 const getSubtitles = catchAsync(async (req, res) => {
   const subtitles = await subtitleService.getSubtitles(
     req.params.lessonId,
@@ -11,6 +14,9 @@ const getSubtitles = catchAsync(async (req, res) => {
   res.status(httpStatus.OK).send({ subtitles });
 });
 
+/**
+ * Thêm phụ đề mới cho bài học
+ */
 const addSubtitle = catchAsync(async (req, res) => {
   const subtitle = await subtitleService.addSubtitle(
     req.params.lessonId,
@@ -20,13 +26,15 @@ const addSubtitle = catchAsync(async (req, res) => {
   res.status(httpStatus.CREATED).send(subtitle);
 });
 
+/**
+ * Đặt phụ đề chính cho bài học
+ */
 const setPrimarySubtitle = catchAsync(async (req, res) => {
   await subtitleService.setPrimarySubtitle(
     Number(req.params.lessonId),
     Number(req.params.subtitleId),
     req.user
   );
-  // Trả về danh sách mới hoặc chỉ message thành công
   const subtitles = await subtitleService.getSubtitles(
     req.params.lessonId,
     req.user
@@ -36,6 +44,9 @@ const setPrimarySubtitle = catchAsync(async (req, res) => {
     .send({ message: 'Đặt phụ đề chính thành công.', subtitles });
 });
 
+/**
+ * Xóa phụ đề khỏi bài học
+ */
 const deleteSubtitle = catchAsync(async (req, res) => {
   await subtitleService.deleteSubtitle(
     req.params.lessonId,

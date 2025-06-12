@@ -1,24 +1,23 @@
 const httpStatus = require('http-status').status;
-const { getConnection, sql } = require('../../database/connection'); // Cần cho transaction
+const { getConnection, sql } = require('../../database/connection');
 const reviewRepository = require('./reviews.repository');
-const courseRepository = require('../courses/courses.repository'); // Check course
-const enrollmentService = require('../enrollments/enrollments.service'); // Check enrollment
+const courseRepository = require('../courses/courses.repository');
+const enrollmentService = require('../enrollments/enrollments.service');
 const ApiError = require('../../core/errors/ApiError');
 const Roles = require('../../core/enums/Roles');
 const logger = require('../../utils/logger');
 const notificationService = require('../notifications/notifications.service');
 const { toCamelCaseObject } = require('../../utils/caseConverter');
-
+const userRepository = require('../users/users.repository');
 /**
  * Hàm tiện ích để cập nhật rating trung bình và số lượng review cho khóa học.
  * @param {number} courseId
  */
 async function updateCourseAverageRating(courseId) {
-  const pool = await getConnection(); // Import getConnection từ database/connection
+  const pool = await getConnection();
   const request = pool.request();
   request.input('CourseID', sql.BigInt, courseId);
   try {
-    // Tính lại rating trung bình và số lượng review từ bảng CourseReviews
     const result = await request.query(`
           SELECT
               COUNT(*) as reviewCount,
@@ -31,7 +30,6 @@ async function updateCourseAverageRating(courseId) {
     averageRating =
       averageRating !== null ? parseFloat(averageRating.toFixed(1)) : null;
 
-    // Cập nhật vào bảng Courses
     const updateRequest = pool.request();
     updateRequest.input('CourseID', sql.BigInt, courseId);
     updateRequest.input('AverageRating', sql.Decimal(3, 1), averageRating);
@@ -51,7 +49,6 @@ async function updateCourseAverageRating(courseId) {
       `Error updating average rating for course ${courseId}:`,
       error
     );
-    // Không nên throw lỗi ở đây vì đây là tác vụ nền
   }
 }
 
@@ -62,38 +59,36 @@ async function updateCourseAverageRating(courseId) {
  * @param {object} reviewBody - { rating, comment }
  * @returns {Promise<object>} - Review đã tạo/cập nhật (kèm thông tin user).
  */
-const createOrUpdateReview = async (accountId, courseId, reviewBody) => {
+const createOrUpdateReview = async (user, courseId, reviewBody) => {
+  const accountId = user.id;
+  const isAdmin = user.role === Roles.ADMIN || user.role === Roles.SUPERADMIN;
   const { rating, comment } = reviewBody;
-  console.log('reviewBody', reviewBody);
-  // 1. Kiểm tra khóa học tồn tại (lấy cả thông tin instructor để gửi thông báo)
-  const course = await courseRepository.findCourseById(courseId, true); // Lấy cả draft/archived để check enroll
+
+  const course = await courseRepository.findCourseById(courseId, true);
   if (!course) {
     throw new ApiError(httpStatus.NOT_FOUND, 'Không tìm thấy khóa học.');
   }
 
-  // 2. Kiểm tra đã đăng ký khóa học chưa
   const isEnrolled = await enrollmentService.isUserEnrolled(
     accountId,
     courseId
   );
-  if (!isEnrolled) {
+  if (!isEnrolled && !isAdmin) {
     throw new ApiError(
       httpStatus.FORBIDDEN,
       'Bạn cần đăng ký khóa học này để có thể đánh giá.'
     );
   }
 
-  // 3. Kiểm tra xem user đã đánh giá khóa này chưa
   const existingReview = await reviewRepository.findReviewByUserAndCourse(
     accountId,
     courseId
   );
 
-  let savedReview; // Biến lưu kết quả cuối cùng (bản ghi review đầy đủ)
-  let isNewReview = false; // Cờ để biết là tạo mới hay cập nhật
+  let savedReview;
+  let isNewReview = false;
 
   if (existingReview) {
-    // --- CẬP NHẬT ĐÁNH GIÁ ---
     logger.info(
       `Updating existing review ${existingReview.ReviewID} for course ${courseId} by user ${accountId}`
     );
@@ -101,10 +96,8 @@ const createOrUpdateReview = async (accountId, courseId, reviewBody) => {
       existingReview.ReviewID,
       { Rating: rating, Comment: comment }
     );
-    // updateReviewById trả về bản ghi đầy đủ (kèm user info) nếu thành công, null nếu không đổi
-    savedReview = updatedReviewData || existingReview; // Lấy kết quả update hoặc giữ cái cũ nếu ko đổi
+    savedReview = updatedReviewData || existingReview;
   } else {
-    // --- TẠO MỚI ĐÁNH GIÁ ---
     isNewReview = true;
     logger.info(
       `Creating new review for course ${courseId} by user ${accountId}`
@@ -116,10 +109,8 @@ const createOrUpdateReview = async (accountId, courseId, reviewBody) => {
       Comment: comment,
     };
     const newReview = await reviewRepository.createReview(reviewData);
-    // Lấy lại bản ghi đầy đủ kèm thông tin user
     savedReview = await reviewRepository.findReviewById(newReview.ReviewID);
     if (!savedReview) {
-      // Lỗi không mong muốn
       throw new ApiError(
         httpStatus.INTERNAL_SERVER_ERROR,
         'Không thể lấy lại thông tin đánh giá vừa tạo.'
@@ -127,7 +118,6 @@ const createOrUpdateReview = async (accountId, courseId, reviewBody) => {
     }
   }
 
-  // 4. Cập nhật rating trung bình cho khóa học (chạy ngầm)
   updateCourseAverageRating(courseId).catch((err) => {
     logger.error(
       `Background update rating failed for course ${courseId} after review change:`,
@@ -135,7 +125,6 @@ const createOrUpdateReview = async (accountId, courseId, reviewBody) => {
     );
   });
 
-  // 5. Gửi thông báo cho instructor nếu là review mới và người đánh giá không phải instructor
   if (isNewReview && course.InstructorID !== accountId) {
     try {
       const message = `${savedReview.UserFullName || 'Ai đó'} vừa đánh giá ${savedReview.Rating} sao cho khóa học "${course.CourseName}" của bạn.`;
@@ -153,7 +142,6 @@ const createOrUpdateReview = async (accountId, courseId, reviewBody) => {
     }
   }
 
-  // 6. Trả về bản ghi review đã lưu (đã có thông tin user)
   return savedReview;
 };
 
@@ -165,10 +153,6 @@ const createOrUpdateReview = async (accountId, courseId, reviewBody) => {
  */
 const getReviewsByCourse = async (courseId, options) => {
   const { page = 1, limit = 10, sortBy, rating } = options;
-
-  // Kiểm tra khóa học tồn tại (optional, repo cũng sẽ không tìm thấy gì)
-  // const course = await courseRepository.findCourseById(courseId);
-  // if (!course) throw new ApiError(httpStatus.NOT_FOUND, 'Không tìm thấy khóa học.');
 
   const result = await reviewRepository.findReviewsByCourseId(courseId, {
     page,
@@ -183,7 +167,7 @@ const getReviewsByCourse = async (courseId, options) => {
     averageRating:
       result.averageRating !== null
         ? parseFloat(result.averageRating.toFixed(1))
-        : null, // Làm tròn 1 chữ số
+        : null,
     page: parseInt(page, 10),
     limit: parseInt(limit, 10),
     totalPages: Math.ceil(result.total / limit),
@@ -201,7 +185,7 @@ const getMyReviewForCourse = async (accountId, courseId) => {
     accountId,
     courseId
   );
-  return toCamelCaseObject(result); // Chuyển đổi sang camelCase
+  return toCamelCaseObject(result);
 };
 
 /**
@@ -226,18 +210,17 @@ const deleteReview = async (reviewId, user) => {
     );
   }
 
-  const courseId = review.CourseID; // Lấy courseId trước khi xóa
+  const courseId = review.CourseID;
 
   await reviewRepository.deleteReviewById(reviewId);
   logger.info(`Review ${reviewId} deleted by user ${user.id}`);
 
-  // Gọi hàm cập nhật rating sau khi xóa thành công
   updateCourseAverageRating(courseId).catch((err) => {
     logger.error(
       `Background update rating failed for course ${courseId} after review delete:`,
       err
     );
-  }); // Chạy ngầm
+  });
 };
 
 /**
@@ -251,26 +234,20 @@ const queryCourseReviewsByInstructor = async (
   instructorId,
   filterOptions,
   paginationOptions
-  // currentUser = null // Nếu cần kiểm tra quyền
 ) => {
-  // 1. Kiểm tra instructor tồn tại và có vai trò là INSTRUCTOR
   const instructor = await userRepository.findUserById(instructorId);
   if (!instructor || instructor.RoleID !== Roles.INSTRUCTOR) {
     throw new ApiError(httpStatus.NOT_FOUND, 'Instructor not found');
   }
 
-  // 2. Lấy danh sách CourseIDs mà instructor này dạy
-  // Giả sử hàm findAllCourses của courseRepository có thể trả về chỉ CourseID khi cần
-  // Hoặc tạo một hàm mới trong courseRepository: findCourseIdsByInstructorId
   const instructorCourses = await courseRepository.findAllCourses(
-    { instructorId: parseInt(instructorId, 10), statusId: null }, // Lấy tất cả khóa học của GV, bất kể trạng thái
-    { limit: 0 } // Lấy tất cả, không phân trang
+    { instructorId: parseInt(instructorId, 10), statusId: null },
+    { limit: 0 }
   );
 
   const courseIds = instructorCourses.courses.map((course) => course.courseId);
 
   if (courseIds.length === 0) {
-    // Nếu giảng viên không có khóa học nào, trả về danh sách rỗng
     return {
       reviews: [],
       total: 0,
@@ -280,29 +257,26 @@ const queryCourseReviewsByInstructor = async (
     };
   }
 
-  // 3. Gọi repository để lấy reviews dựa trên danh sách courseIds
   const combinedFilterOptions = {
     ...filterOptions,
-    courseIds, // Truyền mảng courseIds vào filter
+    courseIds,
   };
 
   const result = await reviewRepository.findReviewsByFilters(
-    // Cần tạo/điều chỉnh hàm này
     combinedFilterOptions,
     paginationOptions
   );
 
-  // Map kết quả từ repository sang cấu trúc InstructorReviewItem
   const mappedReviews = result.reviews.map((review) => ({
-    reviewId: review.reviewId, // Đảm bảo repository trả về các trường này
+    reviewId: review.reviewId,
     courseId: review.courseId,
-    courseName: review.courseName, // Cần JOIN với Courses trong repository
+    courseName: review.courseName,
     rating: review.rating,
     comment: review.comment,
-    accountId: review.accountId, // ID người review
-    userFullName: review.userFullName, // Cần JOIN với UserProfiles trong repository
-    userAvatarUrl: review.userAvatarUrl, // Cần JOIN với UserProfiles
-    reviewedAt: review.createdAt, // Hoặc UpdatedAt tùy theo logic
+    accountId: review.accountId,
+    userFullName: review.userFullName,
+    userAvatarUrl: review.userAvatarUrl,
+    reviewedAt: review.createdAt,
   }));
 
   return {
@@ -319,6 +293,5 @@ module.exports = {
   getReviewsByCourse,
   getMyReviewForCourse,
   deleteReview,
-  // updateCourseAverageRating, // Có thể gọi hàm này trong các hàm trên
   queryCourseReviewsByInstructor,
 };

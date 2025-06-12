@@ -1,17 +1,18 @@
 const Joi = require('joi');
 Joi.objectId = require('joi-objectid')(Joi);
 
+// Validate create or update review
 const createOrUpdateReview = {
   params: Joi.object().keys({
-    // courseId lấy từ route lồng nhau
     courseId: Joi.number().integer().required(),
   }),
   body: Joi.object().keys({
     rating: Joi.number().integer().min(1).max(5).required(),
-    comment: Joi.string().allow(null, '').max(4000), // Giới hạn độ dài comment
+    comment: Joi.string().allow(null, '').max(4000),
   }),
 };
 
+// Validate get reviews
 const getReviews = {
   params: Joi.object().keys({
     courseId: Joi.number().integer().required(),
@@ -25,26 +26,29 @@ const getReviews = {
       'Rating:desc',
       'Rating:asc'
     ),
-    rating: Joi.number().integer().min(1).max(5), // Lọc theo số sao
+    rating: Joi.number().integer().min(1).max(5),
   }),
 };
 
+// Validate get my review
 const getMyReview = {
   params: Joi.object().keys({
     courseId: Joi.number().integer().required(),
   }),
 };
 
+// Validate delete review
 const deleteReview = {
   params: Joi.object().keys({
     reviewId: Joi.number().integer().required(),
   }),
 };
 
+// Validate get reviews by instructor
 const getReviewsByInstructor = {
   params: Joi.object().keys({
     instructorId: Joi.alternatives()
-      .try(Joi.number().integer(), Joi.objectId()) // dùng Joi.objectId() chứ không phải objectId()
+      .try(Joi.number().integer(), Joi.objectId())
       .required(),
   }),
   query: Joi.object().keys({
@@ -52,7 +56,6 @@ const getReviewsByInstructor = {
     limit: Joi.number().integer().min(1),
     sortBy: Joi.string().valid('reviewedAt:desc', 'rating:desc', 'rating:asc'),
     minRating: Joi.number().integer().min(1).max(5),
-    // courseId: Joi.number().integer(), // optional
   }),
 };
 

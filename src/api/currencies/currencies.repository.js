@@ -1,5 +1,4 @@
 // File: src/api/currencies/currencies.repository.js
-
 const httpStatus = require('http-status').status;
 const ApiError = require('../../core/errors/ApiError');
 const { getConnection, sql } = require('../../database/connection');
@@ -23,7 +22,6 @@ const createCurrency = async (currencyData) => {
   } catch (error) {
     logger.error('Error in createCurrency repository:', error);
     if (error.number === 2627) {
-      // Lỗi Primary Key
       throw new ApiError(
         httpStatus.BAD_REQUEST,
         `Mã tiền tệ '${currencyData.CurrencyID}' đã tồn tại.`
@@ -81,12 +79,12 @@ const findAllCurrencies = async (options = {}) => {
 
     const whereCondition =
       whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
-    const commonQuery = `FROM Currencies ${whereCondition}`; // Đếm tổng số
+    const commonQuery = `FROM Currencies ${whereCondition}`;
 
     const countResult = await request.query(
       `SELECT COUNT(*) as total ${commonQuery}`
     );
-    const { total } = countResult.recordset[0]; // Lấy dữ liệu phân trang
+    const { total } = countResult.recordset[0];
 
     request.input('Limit', sql.Int, limit);
     request.input('Offset', sql.Int, offset);
@@ -123,7 +121,7 @@ const updateCurrencyById = async (currencyId, updateData) => {
       setClauses.push('DecimalPlaces = @DecimalPlaces');
     }
 
-    if (setClauses.length === 0) return null; // Không có gì để cập nhật
+    if (setClauses.length === 0) return null;
 
     const result = await request.query(`
     UPDATE Currencies
@@ -142,7 +140,7 @@ const isCurrencyInUse = async (currencyId) => {
   try {
     const pool = await getConnection();
     const request = pool.request();
-    request.input('CurrencyID', sql.VarChar, currencyId); // Kiểm tra trong các bảng có FK đến Currencies
+    request.input('CurrencyID', sql.VarChar, currencyId);
     const checkQuery = `
     SELECT TOP 1 1 FROM CoursePayments WHERE OriginalCurrencyID = @CurrencyID OR ConvertedCurrencyID = @CurrencyID
     UNION ALL

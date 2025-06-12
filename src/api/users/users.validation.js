@@ -2,10 +2,11 @@ const Joi = require('joi');
 const AccountStatus = require('../../core/enums/AccountStatus');
 const Roles = require('../../core/enums/Roles');
 
+// Update user profile validation
 const updateUserProfile = {
   body: Joi.object()
     .keys({
-      fullName: Joi.string().max(150).allow(null, ''), // Allow empty string or null if user wants to clear
+      fullName: Joi.string().max(150).allow(null, ''),
       avatarUrl: Joi.string()
         .uri({ allowRelative: false })
         .max(500)
@@ -15,18 +16,18 @@ const updateUserProfile = {
         .max(500)
         .allow(null, ''),
       gender: Joi.string().valid('MALE', 'FEMALE', 'OTHER').allow(null, ''),
-      birthDate: Joi.date().iso().allow(null), // YYYY-MM-DD format
+      birthDate: Joi.date().iso().allow(null),
       phoneNumber: Joi.string()
         .pattern(/^[0-9+ -]{10,20}$/)
         .max(20)
-        .allow(null, ''), // Basic phone pattern
+        .allow(null, ''),
       headline: Joi.string().max(255).allow(null, ''),
       location: Joi.string().max(255).allow(null, ''),
     })
-    .min(1), // Phải có ít nhất 1 trường để cập nhật
+    .min(1),
 };
 
-// --- Admin Validations ---
+// Admin Validations
 const getUsers = {
   query: Joi.object().keys({
     page: Joi.number().integer().min(1).default(1),
@@ -75,7 +76,6 @@ const updateUserRole = {
 
 module.exports = {
   updateUserProfile,
-  // Admin
   getUsers,
   getUser,
   updateUserStatus,

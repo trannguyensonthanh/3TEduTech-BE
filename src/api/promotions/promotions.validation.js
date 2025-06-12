@@ -1,13 +1,14 @@
 const Joi = require('joi');
 const PromotionStatus = require('../../core/enums/PromotionStatus');
 
+// Validate create promotion
 const createPromotion = {
   body: Joi.object().keys({
     discountCode: Joi.string().required().max(50).trim().uppercase(),
     promotionName: Joi.string().required().max(255),
     description: Joi.string().allow(null, ''),
     discountType: Joi.string().required().valid('PERCENTAGE', 'FIXED_AMOUNT'),
-    discountValue: Joi.number().required(), // Validate range in service
+    discountValue: Joi.number().required(),
     minOrderValue: Joi.number().min(0).allow(null),
     maxDiscountAmount: Joi.number().min(0).allow(null),
     startDate: Joi.date().iso().required(),
@@ -19,6 +20,7 @@ const createPromotion = {
   }),
 };
 
+// Validate get promotions
 const getPromotions = {
   query: Joi.object().keys({
     page: Joi.number().integer().min(1),
@@ -28,12 +30,14 @@ const getPromotions = {
   }),
 };
 
+// Validate get promotion by id
 const getPromotion = {
   params: Joi.object().keys({
     promotionId: Joi.number().integer().required(),
   }),
 };
 
+// Validate update promotion
 const updatePromotion = {
   params: Joi.object().keys({
     promotionId: Joi.number().integer().required(),
@@ -48,15 +52,23 @@ const updatePromotion = {
       minOrderValue: Joi.number().min(0).allow(null),
       maxDiscountAmount: Joi.number().min(0).allow(null),
       startDate: Joi.date().iso(),
-      endDate: Joi.date().iso(), // .greater(Joi.ref('startDate')), // Cần xử lý phức tạp hơn nếu chỉ update 1 trong 2
+      endDate: Joi.date().iso(),
       maxUsageLimit: Joi.number().integer().min(1).allow(null),
       status: Joi.string().valid(...Object.values(PromotionStatus)),
     })
-    .min(1) // Phải có ít nhất 1 trường để update
-    .with('endDate', 'startDate'), // Nếu cập nhật endDate thì cũng phải có startDate
+    .min(1)
+    .with('endDate', 'startDate'),
 };
 
+// Validate deactivate promotion
 const deactivatePromotion = {
+  params: Joi.object().keys({
+    promotionId: Joi.number().integer().required(),
+  }),
+};
+
+// Validate delete promotion
+const deletePromotion = {
   params: Joi.object().keys({
     promotionId: Joi.number().integer().required(),
   }),
@@ -68,4 +80,5 @@ module.exports = {
   getPromotion,
   updatePromotion,
   deactivatePromotion,
+  deletePromotion,
 };

@@ -21,13 +21,12 @@ const createNotification = async (notificationData) => {
       'RelatedEntityType',
       sql.VarChar,
       notificationData.RelatedEntityType
-    ); // Có thể NULL
+    );
     request.input(
       'RelatedEntityID',
       sql.VarChar,
       notificationData.RelatedEntityID
-    ); // Có thể NULL
-    // IsRead mặc định là 0, CreatedAt mặc định là GETDATE()
+    );
 
     const result = await request.query(`
             INSERT INTO Notifications (RecipientAccountID, Type, Message, RelatedEntityType, RelatedEntityID)
@@ -48,7 +47,7 @@ const createNotification = async (notificationData) => {
  * @returns {Promise<{notifications: object[], total: number}>}
  */
 const findNotificationsByAccountId = async (accountId, options = {}) => {
-  const { page = 1, limit = 10, isRead = null } = options; // isRead = null để lấy cả đọc và chưa đọc
+  const { page = 1, limit = 10, isRead = null } = options;
   const offset = (page - 1) * limit;
 
   try {
@@ -65,13 +64,11 @@ const findNotificationsByAccountId = async (accountId, options = {}) => {
 
     const commonQuery = `FROM Notifications ${whereCondition}`;
 
-    // Đếm tổng số lượng (theo filter isRead)
     const countResult = await request.query(
       `SELECT COUNT(*) as total ${commonQuery}`
     );
     const { total } = countResult.recordset[0];
 
-    // Lấy dữ liệu phân trang
     request.input('Limit', sql.Int, limit);
     request.input('Offset', sql.Int, offset);
     const dataResult = await request.query(`
@@ -103,12 +100,12 @@ const markNotificationAsRead = async (notificationId, accountId) => {
     const request = pool.request();
     request.input('NotificationID', sql.BigInt, notificationId);
     request.input('RecipientAccountID', sql.BigInt, accountId);
-    request.input('IsRead', sql.Bit, 1); // Đặt là đã đọc
+    request.input('IsRead', sql.Bit, 1);
 
     const result = await request.query(`
             UPDATE Notifications
             SET IsRead = @IsRead
-            WHERE NotificationID = @NotificationID AND RecipientAccountID = @RecipientAccountID AND IsRead = 0; -- Chỉ update nếu chưa đọc
+            WHERE NotificationID = @NotificationID AND RecipientAccountID = @RecipientAccountID AND IsRead = 0;
         `);
     return result.rowsAffected[0];
   } catch (error) {
@@ -135,7 +132,7 @@ const markAllNotificationsAsRead = async (accountId) => {
     const result = await request.query(`
             UPDATE Notifications
             SET IsRead = @IsRead
-            WHERE RecipientAccountID = @RecipientAccountID AND IsRead = 0; -- Chỉ update những cái chưa đọc
+            WHERE RecipientAccountID = @RecipientAccountID AND IsRead = 0;
         `);
     return result.rowsAffected[0];
   } catch (error) {
@@ -157,7 +154,7 @@ const countUnreadNotifications = async (accountId) => {
     const pool = await getConnection();
     const request = pool.request();
     request.input('RecipientAccountID', sql.BigInt, accountId);
-    request.input('IsRead', sql.Bit, 0); // Chưa đọc
+    request.input('IsRead', sql.Bit, 0);
 
     const result = await request.query(`
             SELECT COUNT(*) as unreadCount
@@ -211,7 +208,7 @@ const deleteAllReadNotificationsForUser = async (accountId) => {
     const pool = await getConnection();
     const request = pool.request();
     request.input('RecipientAccountID', sql.BigInt, accountId);
-    request.input('IsRead', sql.Bit, 1); // Chỉ xóa những cái đã đọc
+    request.input('IsRead', sql.Bit, 1);
 
     const result = await request.query(`
             DELETE FROM Notifications

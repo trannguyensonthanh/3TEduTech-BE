@@ -5,6 +5,8 @@ const createPaymentMethod = {
   body: Joi.object().keys({
     methodId: Joi.string().required().max(20).trim().uppercase(), // Chuẩn hóa ID
     methodName: Joi.string().required().max(100),
+    iconUrl: Joi.string().uri().max(500).allow(null, ''),
+    description: Joi.string().max(255).allow(null, ''),
   }),
 };
 
@@ -21,6 +23,8 @@ const updatePaymentMethod = {
   body: Joi.object()
     .keys({
       methodName: Joi.string().required().max(100),
+      iconUrl: Joi.string().uri().max(500).allow(null, ''),
+      description: Joi.string().max(255).allow(null, ''),
     })
     .min(1),
 };

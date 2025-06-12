@@ -4,6 +4,8 @@ const promotionRepository = require('./promotions.repository');
 const ApiError = require('../../core/errors/ApiError');
 const PromotionStatus = require('../../core/enums/PromotionStatus');
 const logger = require('../../utils/logger');
+const orderRepository = require('../orders/orders.repository');
+const { toCamelCaseObject } = require('../../utils/caseConverter');
 
 /**
  * Xác định trạng thái promotion dựa trên ngày và trạng thái hiện tại.
@@ -14,22 +16,19 @@ const determinePromotionStatus = (promotion) => {
   const now = moment();
   const startDate = moment(promotion.StartDate);
   const endDate = moment(promotion.EndDate);
-
   if (promotion.Status === PromotionStatus.INACTIVE) {
-    return PromotionStatus.INACTIVE; // Nếu admin đã tắt thì giữ nguyên INACTIVE
+    return PromotionStatus.INACTIVE;
   }
   if (now.isAfter(endDate)) {
     return PromotionStatus.EXPIRED;
   }
   if (now.isBefore(startDate)) {
-    return PromotionStatus.INACTIVE; // Chưa tới ngày, coi là INACTIVE
+    return PromotionStatus.INACTIVE;
   }
-  // Nếu nằm trong khoảng thời gian và không phải INACTIVE/EXPIRED
   return PromotionStatus.ACTIVE;
 };
 
 const createPromotion = async (promoData) => {
-  // 1. Kiểm tra code tồn tại
   const existingCode = await promotionRepository.findPromotionByCode(
     promoData.discountCode
   );
@@ -37,7 +36,6 @@ const createPromotion = async (promoData) => {
     throw new ApiError(httpStatus.BAD_REQUEST, 'Mã giảm giá đã tồn tại.');
   }
 
-  // 2. Validate giá trị discount dựa trên type
   if (
     promoData.discountType === 'PERCENTAGE' &&
     (promoData.discountValue <= 0 || promoData.discountValue > 100)
@@ -56,14 +54,12 @@ const createPromotion = async (promoData) => {
       'Số tiền giảm giá cố định phải lớn hơn 0.'
     );
   }
-  // Đảm bảo MaxDiscountAmount >= 0 nếu có
   if (promoData.maxDiscountAmount !== null && promoData.maxDiscountAmount < 0) {
     throw new ApiError(
       httpStatus.BAD_REQUEST,
       'Giới hạn giảm giá tối đa không được âm.'
     );
   }
-  // Đảm bảo MinOrderValue >= 0 nếu có
   if (promoData.minOrderValue !== null && promoData.minOrderValue < 0) {
     throw new ApiError(
       httpStatus.BAD_REQUEST,
@@ -71,7 +67,6 @@ const createPromotion = async (promoData) => {
     );
   }
 
-  // 3. Chuẩn bị dữ liệu để lưu
   const dataToSave = {
     DiscountCode: promoData.discountCode,
     PromotionName: promoData.promotionName,
@@ -83,13 +78,11 @@ const createPromotion = async (promoData) => {
     StartDate: promoData.startDate,
     EndDate: promoData.endDate,
     MaxUsageLimit: promoData.maxUsageLimit,
-    Status: promoData.status || PromotionStatus.INACTIVE, // Admin có thể set trạng thái ban đầu
+    Status: promoData.status || PromotionStatus.INACTIVE,
   };
 
-  // Tự động xác định trạng thái nếu admin không set hoặc set là ACTIVE
   if (dataToSave.Status === PromotionStatus.ACTIVE) {
     const autoStatus = determinePromotionStatus(dataToSave);
-    // Chỉ cho phép ACTIVE nếu thực sự hợp lệ theo ngày
     dataToSave.Status =
       autoStatus === PromotionStatus.ACTIVE
         ? PromotionStatus.ACTIVE
@@ -102,10 +95,8 @@ const createPromotion = async (promoData) => {
 const getPromotions = async (filters, options) => {
   const { page = 1, limit = 10 } = options;
   const result = await promotionRepository.findAllPromotions(filters, options);
-  // Có thể cập nhật trạng thái dựa trên ngày hiện tại trước khi trả về?
-  // result.promotions.forEach(p => p.CurrentEffectiveStatus = determinePromotionStatus(p));
   return {
-    promotions: result.promotions,
+    promotions: toCamelCaseObject(result.promotions),
     total: result.total,
     page: parseInt(page, 10),
     limit: parseInt(limit, 10),
@@ -118,14 +109,12 @@ const getPromotion = async (promotionId) => {
   if (!promotion) {
     throw new ApiError(httpStatus.NOT_FOUND, 'Không tìm thấy mã giảm giá.');
   }
-  // promotion.CurrentEffectiveStatus = determinePromotionStatus(promotion); // Thêm trạng thái hiệu lực hiện tại
-  return promotion;
+  return toCamelCaseObject(promotion);
 };
 
 const updatePromotion = async (promotionId, updateData) => {
-  const promotion = await getPromotion(promotionId); // Check existence
+  const promotion = await getPromotion(promotionId);
 
-  // Kiểm tra trùng code nếu code được cập nhật
   if (
     updateData.discountCode &&
     updateData.discountCode !== promotion.DiscountCode
@@ -138,8 +127,7 @@ const updatePromotion = async (promotionId, updateData) => {
     }
   }
 
-  // Validate các giá trị nếu chúng được cập nhật
-  const tempPromoData = { ...promotion, ...updateData }; // Dữ liệu giả định sau khi update
+  const tempPromoData = { ...promotion, ...updateData };
   if (
     tempPromoData.discountType === 'PERCENTAGE' &&
     (tempPromoData.discountValue <= 0 || tempPromoData.discountValue > 100)
@@ -174,12 +162,10 @@ const updatePromotion = async (promotionId, updateData) => {
     );
   }
 
-  // Xác định lại Status nếu ngày hoặc status được thay đổi
   if (updateData.status || updateData.startDate || updateData.endDate) {
-    const potentialStatus = updateData.status || tempPromoData.Status; // Ưu tiên status admin set
+    const potentialStatus = updateData.status || tempPromoData.Status;
     const effectiveStatus = determinePromotionStatus(tempPromoData);
 
-    // Chỉ cho phép admin set ACTIVE nếu ngày hợp lệ, nếu không tự chuyển về INACTIVE/EXPIRED
     if (potentialStatus === PromotionStatus.ACTIVE) {
       if (effectiveStatus === PromotionStatus.ACTIVE) {
         updateData.Status = PromotionStatus.ACTIVE;
@@ -189,7 +175,7 @@ const updatePromotion = async (promotionId, updateData) => {
         updateData.Status = PromotionStatus.INACTIVE;
       }
     } else {
-      updateData.Status = potentialStatus; // Giữ nguyên INACTIVE/EXPIRED nếu admin muốn set
+      updateData.Status = potentialStatus;
     }
   }
 
@@ -202,7 +188,7 @@ const updatePromotion = async (promotionId, updateData) => {
  * @returns {Promise<object>}
  */
 const deactivatePromotion = async (promotionId) => {
-  await getPromotion(promotionId); // Check existence
+  await getPromotion(promotionId);
   return promotionRepository.updatePromotionStatus(
     promotionId,
     PromotionStatus.INACTIVE
@@ -219,12 +205,9 @@ const validateAndApplyPromotion = async (promotionCode, orderTotal) => {
   const promotion =
     await promotionRepository.findPromotionByCode(promotionCode);
 
-  // 1. Check existence
   if (!promotion) {
     throw new ApiError(httpStatus.BAD_REQUEST, 'Mã giảm giá không hợp lệ.');
   }
-
-  // 2. Check status (dựa trên trạng thái hiệu lực thực tế)
   const effectiveStatus = determinePromotionStatus(promotion);
   if (effectiveStatus !== PromotionStatus.ACTIVE) {
     if (effectiveStatus === PromotionStatus.EXPIRED)
@@ -236,7 +219,6 @@ const validateAndApplyPromotion = async (promotionCode, orderTotal) => {
       );
   }
 
-  // Check status lưu trong DB (phòng trường hợp admin tắt thủ công)
   if (promotion.Status !== PromotionStatus.ACTIVE) {
     throw new ApiError(
       httpStatus.BAD_REQUEST,
@@ -244,7 +226,6 @@ const validateAndApplyPromotion = async (promotionCode, orderTotal) => {
     );
   }
 
-  // 3. Check usage limit
   if (
     promotion.MaxUsageLimit !== null &&
     promotion.UsageCount >= promotion.MaxUsageLimit
@@ -255,7 +236,6 @@ const validateAndApplyPromotion = async (promotionCode, orderTotal) => {
     );
   }
 
-  // 4. Check minimum order value
   if (
     promotion.MinOrderValue !== null &&
     orderTotal < promotion.MinOrderValue
@@ -266,11 +246,9 @@ const validateAndApplyPromotion = async (promotionCode, orderTotal) => {
     );
   }
 
-  // 5. Calculate discount
   let discountAmount = 0;
   if (promotion.DiscountType === 'PERCENTAGE') {
     discountAmount = orderTotal * (promotion.DiscountValue / 100);
-    // Apply max discount amount cap
     if (
       promotion.MaxDiscountAmount !== null &&
       discountAmount > promotion.MaxDiscountAmount
@@ -281,9 +259,8 @@ const validateAndApplyPromotion = async (promotionCode, orderTotal) => {
     discountAmount = promotion.DiscountValue;
   }
 
-  // Ensure discount doesn't exceed order total
   discountAmount = Math.min(discountAmount, orderTotal);
-  discountAmount = Math.max(0, discountAmount); // Ensure non-negative
+  discountAmount = Math.max(0, discountAmount);
 
   logger.info(
     `Promotion ${promotionCode} validated. Discount: ${discountAmount} for order total ${orderTotal}`
@@ -307,14 +284,36 @@ const incrementUsageCount = async (promotionId, transaction = null) => {
     transaction
   );
   if (!success) {
-    // Điều này có thể xảy ra do race condition (lượt cuối cùng được dùng bởi request khác)
     logger.error(
       `Failed to increment usage count for promotion ${promotionId}. Limit might have been reached.`
     );
-    // Nên throw lỗi để rollback transaction tạo order?
     throw new ApiError(httpStatus.CONFLICT, 'Lượt sử dụng mã giảm giá đã hết.');
   }
   return success;
+};
+
+/**
+ * Admin xóa một mã giảm giá.
+ * @param {number} promotionId
+ * @returns {Promise<void>}
+ */
+const deletePromotion = async (promotionId) => {
+  const promotion = await getPromotion(promotionId);
+
+  const usageInOrders =
+    await orderRepository.countOrdersByPromotionId(promotionId);
+  if (usageInOrders > 0) {
+    throw new ApiError(
+      httpStatus.BAD_REQUEST,
+      `Không thể xóa mã giảm giá này vì nó đã được áp dụng cho ${usageInOrders} đơn hàng. Vui lòng hủy kích hoạt (deactivate) mã này thay vì xóa.`
+    );
+  }
+
+  await promotionRepository.deletePromotionById(promotionId);
+
+  logger.info(
+    `Promotion ${promotionId} (${promotion.DiscountCode}) has been deleted.`
+  );
 };
 
 module.exports = {
@@ -325,4 +324,6 @@ module.exports = {
   deactivatePromotion,
   validateAndApplyPromotion,
   incrementUsageCount,
+  deletePromotion,
+  determinePromotionStatus,
 };

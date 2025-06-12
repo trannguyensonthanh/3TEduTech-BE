@@ -3,6 +3,7 @@ const ApiError = require('../../core/errors/ApiError');
 const { getConnection, sql } = require('../../database/connection');
 const logger = require('../../utils/logger');
 const lessonRepository = require('../lessons/lessons.repository');
+
 /**
  * Lấy thứ tự section lớn nhất hiện tại của một khóa học.
  * @param {number} courseId
@@ -68,7 +69,6 @@ const findSectionById = async (sectionId) => {
     const pool = await getConnection();
     const request = pool.request();
     request.input('SectionID', sql.BigInt, sectionId);
-    // Join với Course để lấy CourseID và InstructorID kiểm tra quyền
     const result = await request.query(`
             SELECT s.*, c.InstructorID, c.StatusID as CourseStatusID
             FROM Sections s
@@ -133,7 +133,7 @@ const updateSectionById = async (sectionId, updateData, transaction = null) => {
     setClauses.push('SectionOrder = @SectionOrder');
   }
 
-  if (setClauses.length === 1) return null; // Không có gì cập nhật
+  if (setClauses.length === 1) return null;
 
   const query = `
         UPDATE Sections
@@ -161,14 +161,12 @@ const deleteSectionById = async (sectionId) => {
     const pool = await getConnection();
     const request = pool.request();
     request.input('SectionID', sql.BigInt, sectionId);
-    // Xóa cứng, Lessons sẽ bị xóa theo do ON DELETE CASCADE
     const result = await request.query(
       'DELETE FROM Sections WHERE SectionID = @SectionID'
     );
     return result.rowsAffected[0];
   } catch (error) {
     logger.error(`Error deleting section ${sectionId}:`, error);
-    // Lỗi FK có thể xảy ra nếu có ràng buộc khác không phải Lesson (hiếm)
     if (error.number === 547) {
       throw new ApiError(
         httpStatus.BAD_REQUEST,
@@ -218,7 +216,6 @@ const findAllSectionsWithDetails = async (courseId, transaction = null) => {
   executor.input('CourseID', sql.BigInt, courseId);
 
   try {
-    // 1. Lấy tất cả sections của khóa học
     const sectionsResult = await executor.query(`
           SELECT *
           FROM Sections
@@ -231,15 +228,13 @@ const findAllSectionsWithDetails = async (courseId, transaction = null) => {
       return [];
     }
 
-    // 2. Lấy tất cả lessons cho các sections này trong một query
     const sectionIds = sections.map((s) => s.SectionID);
     const lessons =
       await lessonRepository.findAllLessonsWithDetailsBySectionIds(
         sectionIds,
         transaction
-      ); // Cần hàm mới trong lesson repo
+      );
 
-    // 3. Gắn lessons vào đúng section
     const sectionMap = new Map(
       sections.map((s) => [s.SectionID, { ...s, lessons: [] }])
     );
@@ -247,13 +242,12 @@ const findAllSectionsWithDetails = async (courseId, transaction = null) => {
       const section = sectionMap.get(lesson.SectionID);
       if (section) {
         if (!Array.isArray(section.lessons)) {
-          section.lessons = []; // Khởi tạo mảng nếu chưa có
+          section.lessons = [];
         }
         section.lessons.push(lesson);
       }
     });
 
-    // Sắp xếp lại lessons trong mỗi section nếu cần (findAllLessonsWithDetailsBySectionIds nên trả về đã sắp xếp)
     sectionMap.forEach((section) => {
       if (section.lessons) {
         section.lessons.sort(
@@ -282,7 +276,6 @@ const deleteSectionsByIds = async (sectionIds, transaction) => {
   if (!sectionIds || sectionIds.length === 0) return 0;
 
   const request = transaction.request();
-  // Tạo placeholders: @id0, @id1,...
   const idPlaceholders = sectionIds
     .map((_, index) => `@id_sec_del_${index}`)
     .join(',');
@@ -303,7 +296,6 @@ const deleteSectionsByIds = async (sectionIds, transaction) => {
       error
     );
     if (error.number === 547) {
-      // Lỗi FK nếu CASCADE không được thiết lập đúng
       throw new ApiError(
         httpStatus.INTERNAL_SERVER_ERROR,
         'Failed to delete related section data. Check FK constraints.'

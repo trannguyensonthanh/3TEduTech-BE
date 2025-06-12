@@ -30,13 +30,11 @@ const createEnrollment = async (enrollmentData, transaction = null) => {
     return result.recordset[0];
   } catch (error) {
     logger.error('Error in createEnrollment repository:', error);
-    // Bắt lỗi unique constraint nếu user đã enroll rồi
     if (error.number === 2627 || error.number === 2601) {
-      // Không nên throw lỗi ở đây, để service kiểm tra trước hoặc xử lý
       logger.warn(
         `Attempt to create duplicate enrollment: AccountID=${enrollmentData.AccountID}, CourseID=${enrollmentData.CourseID}`
       );
-      return null; // Trả về null để service biết là trùng lặp
+      return null;
     }
     throw error;
   }
@@ -92,13 +90,11 @@ const findEnrollmentsByAccountId = async (accountId, options = {}) => {
 
     const whereClauses = ['e.AccountID = @AccountID'];
 
-    // Bộ lọc theo status
     if (status) {
       request.input('StatusID', sql.VarChar, status);
       whereClauses.push('c.StatusID = @StatusID');
     }
 
-    // Bộ lọc theo searchTerm
     if (searchTerm) {
       request.input('SearchTerm', sql.NVarChar, `%${searchTerm}%`);
       whereClauses.push(
@@ -116,13 +112,11 @@ const findEnrollmentsByAccountId = async (accountId, options = {}) => {
       ${whereCondition}
     `;
 
-    // Query đếm tổng số lượng
     const countResult = await request.query(
       `SELECT COUNT(e.EnrollmentID) as total ${commonQuery}`
     );
     const { total } = countResult.recordset[0];
-    // Xác định thứ tự sắp xếp
-    let orderByClause = 'ORDER BY e.EnrolledAt DESC'; // Mặc định
+    let orderByClause = 'ORDER BY e.EnrolledAt DESC';
     if (sortBy) {
       switch (sortBy) {
         case 'enrolledAt_desc':
@@ -180,7 +174,6 @@ const findEnrollmentsByAccountId = async (accountId, options = {}) => {
           orderByClause = 'ORDER BY e.EnrolledAt DESC';
       }
     }
-    // Query lấy dữ liệu phân trang
     request.input('Limit', sql.Int, limit);
     request.input('Offset', sql.Int, offset);
     const dataResult = await request.query(`

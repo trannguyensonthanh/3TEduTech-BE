@@ -4,18 +4,16 @@ const Joi = require('joi');
 const updateMyProfile = {
   body: Joi.object()
     .keys({
-      // Từ UserProfile (ví dụ)
       headline: Joi.string().max(255).allow(null, ''),
       location: Joi.string().max(255).allow(null, ''),
-      // Từ InstructorProfile
       professionalTitle: Joi.string().max(255).allow(null, ''),
-      bio: Joi.string().max(4000).allow(null, ''), // Giới hạn độ dài
-      aboutMe: Joi.string().allow(null, ''), // Có thể là HTML
-      bankAccountNumber: Joi.string().max(50).allow(null, ''), // Cần mã hóa ở tầng nào đó
+      bio: Joi.string().max(4000).allow(null, ''),
+      aboutMe: Joi.string().allow(null, ''),
+      bankAccountNumber: Joi.string().max(50).allow(null, ''),
       bankName: Joi.string().max(100).allow(null, ''),
       bankAccountHolderName: Joi.string().max(150).allow(null, ''),
     })
-    .min(1), // Phải có ít nhất 1 trường để cập nhật
+    .min(1),
 };
 
 const addSkill = {
@@ -32,14 +30,14 @@ const removeSkill = {
 
 const addOrUpdateSocialLink = {
   body: Joi.object().keys({
-    platform: Joi.string().required().max(50).trim().uppercase(), // Chuẩn hóa platform
-    url: Joi.string().uri().required().max(500), // Yêu cầu URL hợp lệ
+    platform: Joi.string().required().max(50).trim().uppercase(),
+    url: Joi.string().uri().required().max(500),
   }),
 };
 
 const removeSocialLink = {
   params: Joi.object().keys({
-    platform: Joi.string().required().max(50), // Platform trong URL param
+    platform: Joi.string().required().max(50),
   }),
 };
 
@@ -71,7 +69,6 @@ const getInstructors = {
       'name:asc',
       'name:desc'
     ),
-    // Thêm các filter khác nếu cần
   }),
 };
 

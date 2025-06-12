@@ -2,22 +2,57 @@ const { getConnection, sql } = require('../../database/connection');
 const logger = require('../../utils/logger');
 
 /**
+ * Tìm user (bao gồm cả thông tin profile và account) theo AccountID.
+ * @param {number} accountId
+ * @returns {Promise<object|null>}
+ */
+const findUserById = async (accountId) => {
+  try {
+    const pool = await getConnection();
+    const request = pool.request();
+    request.input('AccountID', sql.BigInt, accountId);
+    const result = await request.query(`
+      SELECT
+        a.AccountID,
+        a.Email,
+        a.RoleID,
+        a.Status,
+        a.HasSocialLogin,
+        a.CreatedAt AS AccountCreatedAt,
+        a.UpdatedAt AS AccountUpdatedAt,
+        up.FullName,
+        up.AvatarUrl,
+        up.CoverImageUrl,
+        up.Gender,
+        up.BirthDate,
+        up.PhoneNumber,
+        up.Headline,
+        up.Location
+      FROM Accounts a
+      LEFT JOIN UserProfiles up ON a.AccountID = up.AccountID
+      WHERE a.AccountID = @AccountID
+    `);
+    return result.recordset[0] || null;
+  } catch (error) {
+    logger.error(`Error in findUserById (${accountId}):`, error);
+    throw error;
+  }
+};
+
+/**
  * Tạo UserProfile mới (trong một transaction).
  * @param {object} profileData - Dữ liệu profile { AccountID, FullName, ... }.
  * @param {object} transaction - Đối tượng transaction từ mssql.
  * @returns {Promise<void>}
  */
 const createUserProfileInTransaction = async (profileData, transaction) => {
-  console.log('Profile Data:', transaction); // Log dữ liệu profile để kiểm tra
   const request = transaction.request();
   request.input('AccountID', sql.BigInt, profileData.AccountID);
   request.input('FullName', sql.NVarChar, profileData.FullName);
-  // Thêm các input khác cho AvatarUrl, CoverImageUrl, Gender,... nếu có khi đăng ký
-  // request.input('AvatarUrl', sql.VarChar, profileData.AvatarUrl);
 
   await request.query(`
-        INSERT INTO UserProfiles (AccountID, FullName /*, AvatarUrl, ... */)
-        VALUES (@AccountID, @FullName /*, @AvatarUrl, ... */);
+        INSERT INTO UserProfiles (AccountID, FullName)
+        VALUES (@AccountID, @FullName);
     `);
 };
 
@@ -31,7 +66,6 @@ const findUserProfileById = async (accountId) => {
     const pool = await getConnection();
     const request = pool.request();
     request.input('AccountID', sql.BigInt, accountId);
-    // Lấy tất cả các trường từ UserProfiles và một số trường từ Accounts
     const result = await request.query(`
             SELECT
                 up.*,
@@ -63,14 +97,12 @@ const updateUserProfileById = async (accountId, updateData) => {
     const pool = await getConnection();
     const request = pool.request();
     request.input('AccountID', sql.BigInt, accountId);
-    request.input('UpdatedAt', sql.DateTime2, new Date()); // Luôn cập nhật UpdatedAt
+    request.input('UpdatedAt', sql.DateTime2, new Date());
 
     const setClauses = ['UpdatedAt = @UpdatedAt'];
     Object.keys(updateData).forEach((key) => {
       if (key !== 'AccountID' && key !== 'CreatedAt') {
-        // Không cho cập nhật PK và CreatedAt
         const value = updateData[key];
-        // Xác định kiểu dữ liệu SQL (ví dụ đơn giản)
         let sqlType;
         if (
           key === 'FullName' ||
@@ -89,12 +121,11 @@ const updateUserProfileById = async (accountId, updateData) => {
         )
           sqlType = sql.VarChar;
         else if (key === 'BirthDate') sqlType = sql.Date;
-        // Thêm các kiểu khác nếu cần
         else {
           logger.warn(
             `Unhandled key type in updateUserProfileById for key: ${key}`
           );
-          return; // Skip unhandled keys
+          return;
         }
 
         request.input(key, sqlType, value);
@@ -122,8 +153,6 @@ const updateUserProfileById = async (accountId, updateData) => {
     throw error;
   }
 };
-
-// --- Các hàm cho Admin (Ví dụ) ---
 
 /**
  * Lấy danh sách tài khoản (có phân trang, tìm kiếm - Admin).
@@ -161,7 +190,6 @@ const findAllAccounts = async (options = {}) => {
     const whereCondition =
       whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
 
-    // Query để lấy tổng số lượng (cho phân trang)
     const countResult = await request.query(`
             SELECT COUNT(a.AccountID) as total
             FROM Accounts a
@@ -170,7 +198,6 @@ const findAllAccounts = async (options = {}) => {
         `);
     const { total } = countResult.recordset[0];
 
-    // Query để lấy dữ liệu trang hiện tại
     request.input('Limit', sql.Int, limit);
     request.input('Offset', sql.Int, offset);
     const query = `
@@ -243,7 +270,6 @@ const findAllAccounts = async (options = {}) => {
 
     const result = await request.query(query);
 
-    // Parse JSON strings into arrays
     const users = result.recordset.map((user) => ({
       ...user,
       BankDetails: user.BankDetails ? JSON.parse(`[${user.BankDetails}]`) : [],
@@ -258,9 +284,9 @@ const findAllAccounts = async (options = {}) => {
 };
 
 module.exports = {
+  findUserById,
   createUserProfileInTransaction,
   findUserProfileById,
   updateUserProfileById,
   findAllAccounts,
-  // Thêm các hàm khác nếu cần (getUserDetails, etc.)
 };

@@ -1,4 +1,5 @@
 const httpStatus = require('http-status').status;
+const { isNaN } = require('lodash');
 const settingsRepository = require('./settings.repository');
 const ApiError = require('../../core/errors/ApiError');
 
@@ -29,7 +30,6 @@ const getSettingValue = async (settingKey, defaultValue = null) => {
  * @returns {Promise<object>} - Setting đã cập nhật.
  */
 const updateSetting = async (settingKey, settingValue) => {
-  // 1. Tìm setting để kiểm tra tồn tại và quyền sửa
   const setting = await settingsRepository.findSettingByKey(settingKey);
   if (!setting) {
     throw new ApiError(httpStatus.NOT_FOUND, 'Không tìm thấy cài đặt.');
@@ -41,40 +41,62 @@ const updateSetting = async (settingKey, settingValue) => {
     );
   }
 
-  // 2. TODO: Validate kiểu dữ liệu của settingValue dựa trên settingKey nếu cần
-  // Ví dụ: Nếu key là 'PlatformCommissionRate', value phải là số hợp lệ (0-100)
-  let validatedValue = settingValue; // Create a new variable to hold the validated value
+  let validatedValue = settingValue;
 
-  if (settingKey === 'PlatformCommissionRate') {
-    const rate = parseFloat(validatedValue);
-    if (Number.isNaN(rate) || rate < 0 || rate > 100) {
+  const booleanSettings = [
+    'AllowUserRegistration',
+    'AllowInstructorRegistration',
+    'EnableVnPay',
+    'EnableStripe',
+    'EnablePayPal',
+    'EnableMoMo',
+    'EnableCrypto',
+  ];
+  if (booleanSettings.includes(settingKey)) {
+    if (!['true', 'false'].includes(validatedValue.toLowerCase())) {
       throw new ApiError(
         httpStatus.BAD_REQUEST,
-        'Tỷ lệ hoa hồng không hợp lệ (phải từ 0 đến 100).'
+        `Giá trị cho '${settingKey}' phải là 'true' hoặc 'false'.`
       );
     }
-    // Lưu dạng string chuẩn (ví dụ: '30.00')
-    validatedValue = rate.toFixed(2);
-  } else if (settingKey.startsWith('MinWithdrawalAmount')) {
+    validatedValue = validatedValue.toLowerCase();
+  }
+
+  const numericSettings = ['MinWithdrawalAmountVND', 'MinWithdrawalAmountUSD'];
+  if (numericSettings.includes(settingKey)) {
     const amount = parseFloat(validatedValue);
-    if (Number.isNaN(amount) || amount < 0) {
+    if (isNaN(amount) || amount < 0) {
       throw new ApiError(
         httpStatus.BAD_REQUEST,
-        'Số tiền rút tối thiểu không hợp lệ.'
+        `Giá trị cho '${settingKey}' phải là một số không âm.`
       );
     }
     validatedValue = amount.toString();
-  } else if (settingKey === 'InstructorSignupEnabled') {
-    if (!['0', '1'].includes(validatedValue)) {
+  }
+
+  if (settingKey === 'SiteLogoUrl') {
+    try {
+      // eslint-disable-next-line no-new
+      new URL(validatedValue);
+    } catch (error) {
       throw new ApiError(
         httpStatus.BAD_REQUEST,
-        'Giá trị cho phép đăng ký giảng viên không hợp lệ (0 hoặc 1).'
+        `Giá trị cho '${settingKey}' phải là một URL hợp lệ.`
       );
     }
   }
-  // Thêm các validate khác...
 
-  // 3. Cập nhật setting
+  if (settingKey === 'PlatformCommissionRate') {
+    const rate = parseFloat(validatedValue);
+    if (isNaN(rate) || rate < 0 || rate > 100) {
+      throw new ApiError(
+        httpStatus.BAD_REQUEST,
+        'Tỷ lệ hoa hồng không hợp lệ. Vui lòng nhập một số từ 0 đến 100.'
+      );
+    }
+    validatedValue = rate.toFixed(2);
+  }
+
   const updatedSetting = await settingsRepository.updateSettingByKey(
     settingKey,
     validatedValue
@@ -91,6 +113,6 @@ const updateSetting = async (settingKey, settingValue) => {
 
 module.exports = {
   getAllSettings,
-  getSettingValue, // Export để các service khác dùng
+  getSettingValue,
   updateSetting,
 };

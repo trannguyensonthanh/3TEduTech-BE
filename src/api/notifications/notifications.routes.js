@@ -22,7 +22,7 @@ router.get('/unread-count', notificationController.getUnreadCount);
 // Đánh dấu tất cả là đã đọc
 router.post(
   '/mark-all-read',
-  validate(notificationValidation.markAllAsRead), // Validation rỗng
+  validate(notificationValidation.markAllAsRead),
   notificationController.markAllAsRead
 );
 
@@ -34,18 +34,10 @@ router.patch(
 );
 
 // Route để xóa tất cả thông báo đã đọc
-router.delete(
-  '/read', // Dùng DELETE thay vì POST cho hành động xóa
-  // Không cần validate đặc biệt
-  notificationController.deleteAllReadNotifications
-);
+router.delete('/read', notificationController.deleteAllReadNotifications);
 
 // Route để xóa tất cả thông báo
-router.delete(
-  '/all', // Dùng DELETE
-  // Không cần validate đặc biệt
-  notificationController.deleteAllMyNotifications
-);
+router.delete('/all', notificationController.deleteAllMyNotifications);
 
 // Route để xóa một thông báo cụ thể (đặt cuối cùng để không bị nhầm với /unread-count hay /read)
 router.delete(

@@ -2,13 +2,11 @@
 
 const Joi = require('joi');
 
-// Validation cho Thread
 const createThread = {
-  // courseId hoặc lessonId sẽ lấy từ params của route cha
   body: Joi.object().keys({
-    courseId: Joi.number().integer().required(), // Không cần nữa vì đã lấy từ params
+    courseId: Joi.number().integer().required(),
     title: Joi.string().required().max(500),
-    lessonId: Joi.number().integer().optional().allow(null), // Cho phép tạo thread chung cho course
+    lessonId: Joi.number().integer().optional().allow(null),
   }),
 };
 
@@ -18,7 +16,7 @@ const getThreads = {
       courseId: Joi.number().integer(),
       lessonId: Joi.number().integer(),
     })
-    .xor('courseId', 'lessonId'), // Phải có 1 trong 2, không có cả 2
+    .xor('courseId', 'lessonId'),
   query: Joi.object().keys({
     page: Joi.number().integer().min(1),
     limit: Joi.number().integer().min(1).max(50),
@@ -26,7 +24,7 @@ const getThreads = {
       'CreatedAt:desc',
       'CreatedAt:asc',
       'UpdatedAt:desc'
-    ), // Thêm UpdatedAt
+    ),
   }),
 };
 
@@ -45,13 +43,12 @@ const deleteThread = {
   }),
 };
 
-// Validation cho Post
 const createPost = {
   params: Joi.object().keys({
     threadId: Joi.number().integer().required(),
   }),
   body: Joi.object().keys({
-    text: Joi.string().required().min(1).max(10000), // Giới hạn độ dài post
+    text: Joi.string().required().min(1).max(10000),
     parentPostId: Joi.number().integer().optional().allow(null),
   }),
 };
@@ -62,7 +59,7 @@ const getPosts = {
   }),
   query: Joi.object().keys({
     page: Joi.number().integer().min(1),
-    limit: Joi.number().integer().min(1).max(100), // Lấy nhiều post hơn
+    limit: Joi.number().integer().min(1).max(100),
   }),
 };
 

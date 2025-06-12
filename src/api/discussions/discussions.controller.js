@@ -5,14 +5,13 @@ const discussionService = require('./discussions.service');
 const { catchAsync } = require('../../utils/catchAsync');
 const { pick } = require('../../utils/pick');
 
-// === Thread Controllers ===
 const createThread = catchAsync(async (req, res) => {
   const thread = await discussionService.createThread(req.body, req.user);
   res.status(httpStatus.CREATED).send(thread);
 });
 
 const getThreads = catchAsync(async (req, res) => {
-  const filters = pick(req.params, ['courseId', 'lessonId']); // Lấy filter từ params
+  const filters = pick(req.params, ['courseId', 'lessonId']);
   const options = pick(req.query, ['limit', 'page', 'sortBy']);
   const result = await discussionService.getThreads(filters, options, req.user);
   res.status(httpStatus.OK).send(result);
@@ -32,7 +31,6 @@ const deleteThread = catchAsync(async (req, res) => {
   res.status(httpStatus.NO_CONTENT).send();
 });
 
-// === Post Controllers ===
 const createPost = catchAsync(async (req, res) => {
   const post = await discussionService.createPost(
     req.params.threadId,
@@ -77,12 +75,11 @@ const updateThreadStatus = catchAsync(async (req, res) => {
 });
 
 module.exports = {
-  // Threads
   createThread,
   getThreads,
   updateThread,
   deleteThread,
-  // Posts
+
   createPost,
   getPosts,
   updatePost,

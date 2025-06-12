@@ -2,42 +2,36 @@ const nodemailer = require('nodemailer');
 const path = require('path');
 
 const { default: hbs } = require('nodemailer-express-handlebars');
-const config = require('../config'); // Lấy config tổng
+const config = require('../config');
 const logger = require('./logger');
-// Tạo transporter object tái sử dụng được (chỉ tạo 1 lần)
-// Chỉ tạo transporter nếu có đủ cấu hình mail
+
 let transporter = null;
 if (config.mailer.host && config.mailer.auth.user && config.mailer.auth.pass) {
   transporter = nodemailer.createTransport({
     host: config.mailer.host,
     port: config.mailer.port,
-    secure: config.mailer.secure, // true for 465, false for other ports
+    secure: config.mailer.secure,
     requireTLS: config.mailer.requireTLS,
     auth: {
-      user: config.mailer.auth.user, // Tên đăng nhập SMTP (vd: 'apikey' cho SendGrid)
-      pass: config.mailer.auth.pass, // Mật khẩu SMTP (vd: SendGrid API Key)
+      user: config.mailer.auth.user,
+      pass: config.mailer.auth.pass,
     },
     tls: {
-      // Không bắt buộc nhưng đôi khi cần thiết, ví dụ nếu server mail yêu cầu
-      rejectUnauthorized: config.env === 'production', // Chỉ kiểm tra cert nghiêm ngặt ở production
-      // ciphers:'SSLv3' // Có thể cần thêm nếu nhà cung cấp yêu cầu
+      rejectUnauthorized: config.env === 'production',
     },
   });
-  // *** Cấu hình Handlebars cho Nodemailer ***
   const handlebarOptions = {
     viewEngine: {
-      extname: '.hbs', // Phần mở rộng của file template
-      partialsDir: path.resolve('./src/views/emails/partials/'), // Thư mục chứa partials (nếu có)
-      layoutsDir: path.resolve('./src/views/emails/layouts/'), // Thư mục chứa layout (nếu có)
-      defaultLayout: false, // Không dùng layout mặc định ở đây
+      extname: '.hbs',
+      partialsDir: path.resolve('./src/views/emails/partials/'),
+      layoutsDir: path.resolve('./src/views/emails/layouts/'),
+      defaultLayout: false,
     },
-    viewPath: path.resolve('./src/views/emails/'), // Đường dẫn đến thư mục chứa template
-    extName: '.hbs', // Phần mở rộng của file template
+    viewPath: path.resolve('./src/views/emails/'),
+    extName: '.hbs',
   };
 
-  // Sử dụng middleware handlebars
   transporter.use('compile', hbs(handlebarOptions));
-  // Kiểm tra kết nối (optional nhưng hữu ích khi khởi động)
   transporter.verify((error, success) => {
     if (error) {
       logger.error('Nodemailer transporter verification failed:', error);
@@ -60,35 +54,27 @@ if (config.mailer.host && config.mailer.auth.user && config.mailer.auth.pass) {
 const sendEmailWithTemplate = async (to, subject, template, context) => {
   if (!transporter) {
     logger.error(`Email not sent to ${to}: Mailer is not configured.`);
-    // Quyết định có nên throw lỗi hay chỉ log? Tạm thời chỉ log.
-    // throw new Error('Mailer is not configured.');
-    return; // Không gửi nếu chưa config
+    return;
   }
 
   const mailOptions = {
     from: config.mailer.from,
     to,
     subject,
-    template, // Tên file template (ví dụ: 'verifyAccount')
+    template,
     context: {
-      // Dữ liệu sẽ được truyền vào template
       ...context,
-      appName: '3TEduTech', // Thêm tên app vào context chung
-      // Thêm các biến chung khác nếu cần (vd: logoUrl, websiteUrl)
+      appName: '3TEduTech',
     },
-    // attachments: [] // Có thể thêm attachments nếu cần
   };
 
-  console.log('Sending email with options:', mailOptions); // Log thông tin gửi email
+  console.log('Sending email with options:', mailOptions);
 
   try {
     const info = await transporter.sendMail(mailOptions);
     logger.info(`Email sent successfully to ${to}: ${info.messageId}`);
-    // logger.debug('Send mail result:', info); // Log chi tiết nếu cần debug
   } catch (error) {
     logger.error(`Error sending email to ${to}:`, error);
-    // Cân nhắc có nên throw lỗi ở đây không, tùy thuộc vào độ quan trọng của email
-    // throw new ApiError(httpStatus.INTERNAL_SERVER_ERROR, 'Không thể gửi email.');
   }
 };
 
@@ -100,14 +86,13 @@ const sendEmailWithTemplate = async (to, subject, template, context) => {
  * @returns {Promise<void>}
  */
 const sendVerificationEmail = async (toEmail, fullName, verificationToken) => {
-  const verificationLink = `${config.frontendUrl}/verify-email?token=${verificationToken}`; // URL trên frontend xử lý token
+  const verificationLink = `${config.frontendUrl}/verify-email?token=${verificationToken}`;
   const subject = `Xác thực tài khoản ${config.appName || '3TEduTech'}`;
   const context = {
     fullNameOrDefault: fullName || 'bạn',
     verificationLink,
-    // appName đã có trong context chung
   };
-  await sendEmailWithTemplate(toEmail, subject, 'verifyAccount', context); // Gọi template 'verifyAccount'
+  await sendEmailWithTemplate(toEmail, subject, 'verifyAccount', context);
 };
 
 /**
@@ -125,15 +110,12 @@ const sendPasswordResetEmail = async (toEmail, fullName, resetToken) => {
     fullNameOrDefault: fullName || 'bạn',
     resetLink,
     expirationMinutes,
-    // appName đã có trong context chung
   };
-  await sendEmailWithTemplate(toEmail, subject, 'resetPassword', context); // Gọi template 'resetPassword'
+  await sendEmailWithTemplate(toEmail, subject, 'resetPassword', context);
 };
-// Thêm các hàm gửi email khác nếu cần (ví dụ: thông báo khóa học mới, thông báo giao dịch,...)
 
 module.exports = {
-  // sendEmail, // Export hàm gốc nếu cần dùng trực tiếp
-  sendEmailWithTemplate, // Export hàm gửi bằng template
+  sendEmailWithTemplate,
   sendVerificationEmail,
   sendPasswordResetEmail,
 };

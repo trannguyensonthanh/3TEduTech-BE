@@ -15,148 +15,138 @@ const {
 } = require('../../middlewares/auth.middleware');
 const { courseScopedReviewRouter } = require('../reviews/reviews.routes');
 const Roles = require('../../core/enums/Roles');
-const passUserIfAuthenticated = require('../../middlewares/passUserIfAuthenticated'); // Sẽ tạo middleware này
+const passUserIfAuthenticated = require('../../middlewares/passUserIfAuthenticated');
 const { sectionRouter } = require('../sections/sections.routes');
 const { courseDiscussionRouter } = require('../discussions/discussions.routes');
 
 const router = express.Router();
 
-// --- Public Routes (or Authenticated User) ---
-// Dùng middleware mới để lấy req.user nếu đã đăng nhập, không thì bỏ qua
-// hàm này dùng để lấy tất cả khóa học
+/**
+ * Lấy tất cả khóa học (public hoặc user đã đăng nhập)
+ */
 router.get(
   '/',
-  passUserIfAuthenticated, // Lấy req.user nếu có token hợp lệ
+  passUserIfAuthenticated,
   validate(courseValidation.getCourses),
   courseController.getCourses
 );
-// lây khóa học theo slug (có thể public hoặc cần login tùy logic free preview)
+
+/**
+ * Lấy khóa học theo slug (public hoặc user đã đăng nhập)
+ */
 router.get(
   '/:slug',
-  passUserIfAuthenticated, // Lấy req.user nếu có token hợp lệ
+  passUserIfAuthenticated,
   validate(courseValidation.getCourse),
   courseController.getCourse
 );
 
-// --- Instructor Routes ---
-
+/**
+ * Tạo khóa học (chỉ Instructor/Superadmin)
+ */
 router.post(
   '/',
   authenticate,
-  authorize([Roles.INSTRUCTOR, Roles.SUPERADMIN]), // Chỉ Instructor mới được tạo khóa học
+  authorize([Roles.INSTRUCTOR, Roles.SUPERADMIN]),
   validate(courseValidation.createCourse),
   courseController.createCourse
 );
-// '/:courseId', // Cập nhật khóa học (Instructor/Admin)
+
+/**
+ * Cập nhật khóa học (Instructor/Admin/Superadmin)
+ */
 router.patch(
   '/:courseId',
   authenticate,
-  authorize([Roles.INSTRUCTOR, Roles.ADMIN, Roles.SUPERADMIN]), // Instructor và Admin đều có thể update (với quyền khác nhau)
+  authorize([Roles.INSTRUCTOR, Roles.ADMIN, Roles.SUPERADMIN]),
   validate(courseValidation.updateCourse),
   courseController.updateCourse
 );
 
-//  '/:courseId', // Instructor xóa khóa học (có thể là xóa vĩnh viễn hoặc chỉ đánh dấu đã xóa)
+/**
+ * Xóa khóa học (Instructor/Admin/Superadmin)
+ */
 router.delete(
   '/:courseId',
   authenticate,
-  authorize([Roles.INSTRUCTOR, Roles.ADMIN, Roles.SUPERADMIN]), // Instructor và Admin đều có thể xóa (với quyền khác nhau)
+  authorize([Roles.INSTRUCTOR, Roles.ADMIN, Roles.SUPERADMIN]),
   validate(courseValidation.deleteCourse),
   courseController.deleteCourse
 );
 
-//  '/:courseId/submit', // Instructor gửi duyệt
+/**
+ * Gửi duyệt khóa học (Instructor/Admin/Superadmin)
+ */
 router.post(
-  '/:courseId/submit', // Instructor gửi duyệt
+  '/:courseId/submit',
   authenticate,
-  authorize([Roles.INSTRUCTOR, Roles.ADMIN, Roles.SUPERADMIN]), // Instructor và Admin đều có thể gửi duyệt (với quyền khác nhau)
+  authorize([Roles.INSTRUCTOR, Roles.ADMIN, Roles.SUPERADMIN]),
   validate(courseValidation.submitCourse),
   courseController.submitCourseForApproval
 );
 
-// --- Admin Routes ---
-// '/reviews/:requestId', // Admin duyệt/từ chối (dùng requestId)
+/**
+ * Duyệt/từ chối khóa học (Admin/Superadmin)
+ */
 router.patch(
-  '/reviews/:requestId', // Admin duyệt/từ chối (dùng requestId)
+  '/reviews/:requestId',
   authenticate,
   authorize([Roles.ADMIN, Roles.SUPERADMIN]),
   validate(courseValidation.reviewCourse),
   courseController.reviewCourseApproval
 );
 
-// // Lấy danh sách khóa học chờ duyệt => vô dụng
-// router.get(
-//   '/reviews/pending-approval', // Đường dẫn riêng cho dễ phân biệt
-//   authenticate,
-//   authorize([Roles.ADMIN, Roles.SUPERADMIN]),
-//   validate(courseValidation.getPendingCourses),
-//   courseController.getPendingCourses // Controller mới
-// );
-
-//  '/:courseId/feature', // Admin đánh dấu nổi bật
+/**
+ * Đánh dấu khóa học nổi bật (Admin/Superadmin)
+ */
 router.patch(
-  '/:courseId/feature', // Admin đánh dấu nổi bật
+  '/:courseId/feature',
   authenticate,
   authorize([Roles.ADMIN, Roles.SUPERADMIN]),
   validate(courseValidation.toggleFeature),
   courseController.toggleCourseFeature
 );
 
-// --- Thêm Route Upload Thumbnail ---
-//  '/:courseId/thumbnail', // Đường dẫn mới cho thumbnail
+/**
+ * Upload thumbnail cho khóa học
+ */
 router.patch(
   '/:courseId/thumbnail',
   authenticate,
   authorize([Roles.INSTRUCTOR, Roles.ADMIN, Roles.SUPERADMIN]),
-  uploadImage.single('thumbnail'), // Middleware nhận file từ field 'thumbnail'
-  handleMulterError, // Middleware xử lý lỗi multer *sau* uploadImage
-  courseController.updateCourseThumbnail // Controller mới sẽ tạo
+  uploadImage.single('thumbnail'),
+  handleMulterError,
+  courseController.updateCourseThumbnail
 );
 
-// --- Thêm Route Upload Intro Video ---
-// '/:courseId/intro-video', // Đường dẫn mới cho video giới thiệu
+/**
+ * Upload video giới thiệu cho khóa học
+ */
 router.patch(
   '/:courseId/intro-video',
   authenticate,
   authorize([Roles.INSTRUCTOR, Roles.ADMIN, Roles.SUPERADMIN]),
-  uploadVideo.single('introVideo'), // Middleware nhận file từ field 'introVideo'
+  uploadVideo.single('introVideo'),
   handleMulterError,
-  courseController.updateCourseIntroVideo // Controller mới
+  courseController.updateCourseIntroVideo
 );
 
-// --- Route mới cho Sync Curriculum ---
-router.put(
-  '/:courseId/curriculum', // Sử dụng PUT để thay thế toàn bộ curriculum
-  authenticate,
-  // Chỉ instructor/admin
-  (req, res, next) => {
-    console.log('Request Body:', req.body);
-    if (req.body.sections) {
-      req.body.sections.forEach((section, index) => {
-        console.log(`Section ${index + 1}:`, section);
-        if (section.lessons) {
-          console.log(`Lessons in Section ${index + 1}:`, section.lessons);
-        }
-      });
-    }
-    next(); // Chuyển tiếp request đến middleware tiếp theo
-  },
-  validate(courseValidation.syncCurriculum), // *** Cần tạo schema validation này ***
-  courseController.syncCurriculum // *** Controller mới ***
-);
-
+/**
+ * Lấy danh sách trạng thái khóa học
+ */
 router.get('/course-statuses/statuses', courseController.getCourseStatuses);
 
-// Route mới: Lấy danh sách khóa học theo instructorId (thường dùng ID cho filter backend)
+/**
+ * Lấy danh sách khóa học theo instructorId
+ */
 router.get(
   '/by-instructor/:instructorId',
-  // passUserIfAuthenticated, // Tùy theo có cần public hay không
-  validate(courseValidation.getCoursesByInstructor), // Cần tạo schema validation này
-  courseController.getCoursesByInstructorId // Cần tạo controller method này
+  validate(courseValidation.getCoursesByInstructor),
+  courseController.getCoursesByInstructorId
 );
 
-// Mount section routes vào courses/:courseId/sections
 router.use('/:courseId/sections', sectionRouter);
 router.use('/:courseId/reviews', courseScopedReviewRouter);
 router.use('/:courseId/discussions', courseDiscussionRouter);
+
 module.exports = router;

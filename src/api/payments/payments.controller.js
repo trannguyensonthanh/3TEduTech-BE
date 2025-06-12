@@ -1,8 +1,8 @@
 const httpStatus = require('http-status').status;
-const qs = require('qs'); // Để tạo query string từ object
+const qs = require('qs');
 const paymentService = require('./payments.service');
 const { catchAsync } = require('../../utils/catchAsync');
-const config = require('../../config'); // Để lấy frontend URL
+const config = require('../../config');
 const ApiError = require('../../core/errors/ApiError');
 const logger = require('../../utils/logger');
 const stripe = require('../../config/stripe');
@@ -10,7 +10,6 @@ const stripe = require('../../config/stripe');
 // Để sử dụng Stripe SDK
 const createVnpayUrl = catchAsync(async (req, res) => {
   const { orderId, bankCode, locale } = req.body;
-  // Lấy IP từ request (cần cấu hình Express để tin tưởng proxy nếu có)
   const ipAddr =
     req.headers['x-forwarded-for'] ||
     req.connection.remoteAddress ||
@@ -23,7 +22,6 @@ const createVnpayUrl = catchAsync(async (req, res) => {
       'Không thể xác định địa chỉ IP.'
     );
   }
-  // Lấy địa chỉ IP đầu tiên nếu có nhiều IP trong x-forwarded-for
   const clientIp = ipAddr.split(',')[0].trim();
 
   const paymentUrl = await paymentService.createVnpayUrl(
@@ -35,20 +33,18 @@ const createVnpayUrl = catchAsync(async (req, res) => {
   res.status(httpStatus.OK).send({ paymentUrl });
 });
 
+// Chuyển hướng người dùng về trang kết quả của Frontend kèm theo thông tin
 const handleVnpayReturn = catchAsync(async (req, res) => {
   const vnpParams = req.query;
   const result = await paymentService.processVnpayReturn(vnpParams);
 
-  // Chuyển hướng người dùng về trang kết quả của Frontend kèm theo thông tin
-  // Ví dụ: redirect về trang /payment/result?status=success&orderId=...&message=...
   const frontendResultUrl = `${
     config.frontendUrl || 'http://localhost:8080'
-  }/payment/result`; // Cần thêm frontendUrl vào config
+  }/payment/result`;
   const queryResult = {
     vnp_ResponseCode: result.code,
     orderId: result.orderId,
-    message: encodeURIComponent(result.message), // Encode message để tránh lỗi URL
-    // Thêm các tham số khác nếu cần
+    message: encodeURIComponent(result.message),
   };
   const redirectUrl = `${frontendResultUrl}?${qs.stringify(queryResult)}`;
 
@@ -93,10 +89,48 @@ const handleCryptoWebhook = catchAsync(async (req, res) => {
   res.status(httpStatus.OK).send();
 });
 
+const createPayPalOrder = catchAsync(async (req, res) => {
+  const { orderId } = req.body;
+  const accountId = req.user.id;
+  const payPalOrder = await paymentService.createPayPalOrder(
+    orderId,
+    accountId
+  );
+  res.status(httpStatus.CREATED).send(payPalOrder);
+});
+
+const capturePayPalOrder = catchAsync(async (req, res) => {
+  const { orderId, internalOrderId } = req.body;
+  const accountId = req.user.id;
+  const result = await paymentService.capturePayPalPayment(
+    orderId,
+    internalOrderId,
+    accountId
+  );
+  res.status(httpStatus.OK).send(result);
+});
+
+const createMomoPaymentUrl = catchAsync(async (req, res) => {
+  const { orderId } = req.body;
+  const accountId = req.user.id;
+  const result = await paymentService.createMomoPaymentUrl(orderId, accountId);
+  res.status(httpStatus.OK).send(result);
+});
+
+// MoMo yêu cầu response rỗng với status 204 No Content sau khi xử lý thành công
+const handleMomoWebhook = catchAsync(async (req, res) => {
+  await paymentService.processMomoWebhook(req.body);
+  res.status(204).send();
+});
+
 module.exports = {
   createVnpayUrl,
   handleVnpayReturn,
   createStripeCheckoutSession,
   createCryptoInvoice,
   handleCryptoWebhook,
+  createPayPalOrder,
+  capturePayPalOrder,
+  createMomoPaymentUrl,
+  handleMomoWebhook,
 };

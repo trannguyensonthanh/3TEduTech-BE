@@ -5,7 +5,7 @@ const { toPascalCaseObject } = require('../../utils/caseConverter');
 const logger = require('../../utils/logger');
 const quizRepository = require('../quizzes/quizzes.repository');
 const attachmentRepository = require('./lessonAttachment.repository');
-const subtitleRepository = require('./subtitle.repository'); // *** Import subtitle repository ***
+const subtitleRepository = require('./subtitle.repository');
 
 /**
  * Lấy thứ tự lesson lớn nhất hiện tại của một section.
@@ -45,32 +45,28 @@ const createLesson = async (lessonData, transaction = null) => {
     ? transaction.request()
     : (await getConnection()).request();
 
-  // *** INPUT các trường cơ bản và trường mới ***
   executor.input('SectionID', sql.BigInt, lessonData.SectionID);
   executor.input('LessonName', sql.NVarChar, lessonData.LessonName);
-  executor.input('Description', sql.NVarChar, lessonData.Description); // Cho phép NULL
+  executor.input('Description', sql.NVarChar, lessonData.Description);
   executor.input('LessonOrder', sql.Int, lessonData.LessonOrder);
   executor.input('LessonType', sql.VarChar, lessonData.LessonType);
-  executor.input('VideoSourceType', sql.VarChar, lessonData.VideoSourceType); // *** Cột mới, có thể NULL ***
-  executor.input('ExternalVideoID', sql.VarChar, lessonData.ExternalVideoID); // *** Cột tái sử dụng, có thể NULL ***
-  executor.input('ThumbnailUrl', sql.VarChar, lessonData.ThumbnailUrl); // Giữ lại ThumbnailUrl
+  executor.input('VideoSourceType', sql.VarChar, lessonData.VideoSourceType);
+  executor.input('ExternalVideoID', sql.VarChar, lessonData.ExternalVideoID);
+  executor.input('ThumbnailUrl', sql.VarChar, lessonData.ThumbnailUrl);
   executor.input(
     'VideoDurationSeconds',
     sql.Int,
     lessonData.VideoDurationSeconds
-  ); // Có thể NULL
-  executor.input('TextContent', sql.NVarChar, lessonData.TextContent); // Có thể NULL
+  );
+  executor.input('TextContent', sql.NVarChar, lessonData.TextContent);
   executor.input('IsFreePreview', sql.Bit, lessonData.IsFreePreview || false);
-  // Bỏ các trường VideoUrl, VideoPublicId
 
   try {
-    // *** Câu lệnh INSERT đã cập nhật ***
     const result = await executor.query(`
           INSERT INTO Lessons (
               SectionID, LessonName, Description, LessonOrder, LessonType,
               VideoSourceType, ExternalVideoID, ThumbnailUrl, VideoDurationSeconds,
               TextContent, IsFreePreview
-              -- Không còn VideoUrl, VideoPublicId
           )
           OUTPUT Inserted.*
           VALUES (
@@ -82,7 +78,6 @@ const createLesson = async (lessonData, transaction = null) => {
     return result.recordset[0];
   } catch (error) {
     logger.error('Error in createLesson repository:', error);
-    // Kiểm tra lỗi FK nếu cần
     if (
       error.number === 547 &&
       error.message.includes('FK_Lessons_SectionID')
@@ -92,7 +87,7 @@ const createLesson = async (lessonData, transaction = null) => {
         `Section ID ${lessonData.SectionID} không hợp lệ.`
       );
     }
-    throw error; // Ném lại lỗi khác
+    throw error;
   }
 };
 
@@ -107,7 +102,6 @@ const findLessonById = async (lessonId) => {
     const request = pool.request();
     request.input('LessonID', sql.BigInt, lessonId);
 
-    // Lấy thông tin cơ bản của lesson, section, và course
     const lessonResult = await request.query(`
       SELECT l.*, s.CourseID, c.InstructorID, c.StatusID as CourseStatusID
       FROM Lessons l
@@ -118,10 +112,9 @@ const findLessonById = async (lessonId) => {
 
     const lesson = lessonResult.recordset[0];
     if (!lesson) {
-      return null; // Không tìm thấy lesson
+      return null;
     }
 
-    // Lấy danh sách questions và options liên quan
     const questionsResult = await request.query(`
       SELECT q.QuestionID, q.QuestionText, q.Explanation, q.QuestionOrder,
              o.OptionID, o.OptionText, o.IsCorrectAnswer, o.OptionOrder
@@ -152,7 +145,6 @@ const findLessonById = async (lessonId) => {
       }
     });
 
-    // Lấy danh sách attachments liên quan
     const attachmentsResult = await request.query(`
       SELECT AttachmentID, FileName, FileURL, FileType, FileSize, UploadedAt
       FROM LessonAttachments
@@ -169,7 +161,6 @@ const findLessonById = async (lessonId) => {
       uploadedAt: attachment.UploadedAt,
     }));
 
-    // Lấy danh sách subtitles liên quan
     const subtitlesResult = await request.query(`
   SELECT 
     ls.SubtitleID, 
@@ -193,7 +184,6 @@ const findLessonById = async (lessonId) => {
       uploadedAt: subtitle.UploadedAt,
     }));
 
-    // Lồng các dữ liệu con vào lesson
     return {
       ...lesson,
       questions: Array.from(questionsMap.values()),
@@ -221,7 +211,6 @@ const findLessonsBySectionId = async (sectionId) => {
               LessonID, SectionID, LessonName, Description, LessonOrder, LessonType,
               VideoSourceType, ExternalVideoID, ThumbnailUrl, VideoDurationSeconds,
               TextContent, IsFreePreview, OriginalID, CreatedAt, UpdatedAt
-              -- Bỏ VideoUrl, VideoPublicId
           FROM Lessons
           WHERE SectionID = @SectionID
           ORDER BY LessonOrder ASC;
@@ -251,7 +240,6 @@ const updateLessonById = async (lessonId, updateData, transaction = null) => {
 
   const setClauses = ['UpdatedAt = @UpdatedAt'];
 
-  // Duyệt qua các key trong updateData để tạo câu lệnh SET và input params
   for (const key in updateDatatoPascalCaseObject) {
     if (
       Object.hasOwnProperty.call(updateDatatoPascalCaseObject, key) &&
@@ -260,10 +248,9 @@ const updateLessonById = async (lessonId, updateData, transaction = null) => {
       key !== 'CreatedAt'
     ) {
       const value = updateDatatoPascalCaseObject[key];
-      let dbKey = key; // Tên cột trong DB (có thể khác key trong object)
+      let dbKey = key;
       let sqlType;
 
-      // Xác định tên cột và kiểu dữ liệu
       switch (key) {
         case 'LessonName':
           dbKey = 'LessonName';
@@ -284,11 +271,11 @@ const updateLessonById = async (lessonId, updateData, transaction = null) => {
         case 'VideoSourceType':
           dbKey = 'VideoSourceType';
           sqlType = sql.VarChar;
-          break; // *** Thêm ***
+          break;
         case 'ExternalVideoID':
           dbKey = 'ExternalVideoID';
           sqlType = sql.VarChar;
-          break; // *** Dùng ExternalVideoID ***
+          break;
         case 'ThumbnailUrl':
           dbKey = 'ThumbnailUrl';
           sqlType = sql.VarChar;
@@ -305,14 +292,12 @@ const updateLessonById = async (lessonId, updateData, transaction = null) => {
           dbKey = 'IsFreePreview';
           sqlType = sql.Bit;
           break;
-        // case 'videoUrl': continue; // *** Bỏ qua cột cũ ***
-        // case 'videoPublicId': continue; // *** Bỏ qua cột cũ ***
         default:
-          continue; // Bỏ qua các key không hợp lệ hoặc không cho phép update
+          continue;
       }
 
-      executor.input(key, sqlType, value); // Dùng key của updateData làm tên @param
-      setClauses.push(`${dbKey} = @${key}`); // Dùng dbKey cho tên cột
+      executor.input(key, sqlType, value);
+      setClauses.push(`${dbKey} = @${key}`);
     }
   }
 
@@ -320,29 +305,27 @@ const updateLessonById = async (lessonId, updateData, transaction = null) => {
     logger.warn(
       `Update lesson ${lessonId} called with no valid fields to update.`
     );
-    return null; // Không có gì thay đổi
+    return null;
   }
 
   const query = `
       UPDATE Lessons
       SET ${setClauses.join(', ')}
-      OUTPUT Inserted.* -- Trả về tất cả các cột của dòng đã cập nhật
+      OUTPUT Inserted.*
       WHERE LessonID = @LessonID;
   `;
 
   try {
     const result = await executor.query(query);
     if (result.recordset.length === 0) {
-      // Trường hợp không tìm thấy lessonId để update (ít xảy ra nếu service đã check)
       throw new ApiError(
         httpStatus.NOT_FOUND,
         `Lesson with ID ${lessonId} not found for update.`
       );
     }
-    // Trả về bản ghi đã cập nhật (loại bỏ các cột không cần thiết nếu muốn)
     const updatedLesson = result.recordset[0];
-    delete updatedLesson.VideoUrl; // Đảm bảo không trả về cột đã xóa
-    delete updatedLesson.VideoPublicId; // Đảm bảo không trả về cột đã xóa
+    delete updatedLesson.VideoUrl;
+    delete updatedLesson.VideoPublicId;
     return updatedLesson;
   } catch (error) {
     logger.error(`Error updating lesson ${lessonId}:`, error);
@@ -367,7 +350,6 @@ const deleteLessonById = async (lessonId) => {
   } catch (error) {
     logger.error(`Error deleting lesson ${lessonId}:`, error);
     if (error.number === 547) {
-      // Có thể do LessonProgress, QuizAttempts,...
       throw new ApiError(
         httpStatus.BAD_REQUEST,
         'Không thể xóa bài học vì có dữ liệu liên quan (tiến độ học, bài quiz,...).'
@@ -434,7 +416,6 @@ const deleteLessonsByIds = async (lessonIds, transaction) => {
   } catch (error) {
     logger.error(`Error bulk deleting lessons: ${lessonIds.join(', ')}`, error);
     if (error.number === 547) {
-      // Lỗi FK nếu CASCADE không được thiết lập đúng
       throw new ApiError(
         httpStatus.INTERNAL_SERVER_ERROR,
         'Failed to delete related lesson data. Check FK constraints.'
@@ -471,7 +452,6 @@ const findAllLessonsWithDetailsBySectionIds = async (
   );
 
   try {
-    // 1. Lấy tất cả lessons cơ bản
     const lessonsResult = await executor.query(`
           SELECT * FROM Lessons WHERE SectionID IN (${sectionIdPlaceholders}) ORDER BY SectionID, LessonOrder ASC;
       `);
@@ -480,9 +460,7 @@ const findAllLessonsWithDetailsBySectionIds = async (
 
     const lessonIds = lessons.map((l) => l.LessonID);
 
-    // 2. Lấy đồng thời tất cả entities con
     const [questionsWithOptions, attachments, subtitles] = await Promise.all([
-      // Lấy questions đã kèm options (showCorrectAnswer=true vì đây là backend)
       quizRepository.findAllQuestionsWithOptionsByLessonIds(
         lessonIds,
         true,
@@ -492,8 +470,7 @@ const findAllLessonsWithDetailsBySectionIds = async (
       subtitleRepository.findSubtitlesByLessonIds(lessonIds, transaction),
     ]);
 
-    // 3. Tạo map để gắn dữ liệu con vào lesson
-    const questionsMap = new Map(); // Key: LessonID, Value: Array<QuestionWithOptions>
+    const questionsMap = new Map();
     questionsWithOptions.forEach((q) => {
       if (!questionsMap.has(q.LessonID)) {
         questionsMap.set(q.LessonID, []);
@@ -501,7 +478,7 @@ const findAllLessonsWithDetailsBySectionIds = async (
       questionsMap.get(q.LessonID).push(q);
     });
 
-    const attachmentsMap = new Map(); // Key: LessonID, Value: Array<Attachment>
+    const attachmentsMap = new Map();
     attachments.forEach((a) => {
       if (!attachmentsMap.has(a.LessonID)) {
         attachmentsMap.set(a.LessonID, []);
@@ -509,7 +486,7 @@ const findAllLessonsWithDetailsBySectionIds = async (
       attachmentsMap.get(a.LessonID).push(a);
     });
 
-    const subtitlesMap = new Map(); // Key: LessonID, Value: Array<Subtitle>
+    const subtitlesMap = new Map();
     subtitles.forEach((s) => {
       if (!subtitlesMap.has(s.LessonID)) {
         subtitlesMap.set(s.LessonID, []);
@@ -517,18 +494,17 @@ const findAllLessonsWithDetailsBySectionIds = async (
       subtitlesMap.get(s.LessonID).push(s);
     });
 
-    // 4. Gắn entities con vào đúng lesson
     const lessonsWithDetails = lessons.map((lesson) => ({
       ...lesson,
       questions: (questionsMap.get(lesson.LessonID) || []).sort(
         (a, b) => (a.QuestionOrder ?? 0) - (b.QuestionOrder ?? 0)
-      ), // Sắp xếp lại q
+      ),
       attachments: attachmentsMap.get(lesson.LessonID) || [],
       subtitles: (subtitlesMap.get(lesson.LessonID) || []).sort(
         (a, b) =>
           (a.IsDefault ? -1 : 1) - (b.IsDefault ? -1 : 1) ||
           a.LanguageName.localeCompare(b.LanguageName)
-      ), // Sắp xếp lại sub
+      ),
     }));
     return lessonsWithDetails;
   } catch (error) {

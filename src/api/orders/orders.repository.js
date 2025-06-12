@@ -103,7 +103,7 @@ const updateOrderStatusAndPayment = async (
     setClauses.push('PaymentID = @PaymentID');
   }
 
-  if (setClauses.length === 0) return null; // Không có gì cập nhật
+  if (setClauses.length === 0) return null;
 
   try {
     const result = await executor.query(`
@@ -115,7 +115,6 @@ const updateOrderStatusAndPayment = async (
     return result.recordset[0];
   } catch (error) {
     logger.error(`Error updating order status/payment for ${orderId}:`, error);
-    // Xử lý lỗi unique PaymentID nếu cần
     if (error.number === 2627 || error.number === 2601) {
       throw new ApiError(
         httpStatus.INTERNAL_SERVER_ERROR,
@@ -151,7 +150,6 @@ const linkOrderItemToEnrollment = async (
       error
     );
     if (error.number === 2627 || error.number === 2601) {
-      // Lỗi unique EnrollmentID
       throw new ApiError(
         httpStatus.INTERNAL_SERVER_ERROR,
         'Lỗi khi liên kết đơn hàng với đăng ký (trùng lặp Enrollment).'
@@ -169,7 +167,6 @@ const linkOrderItemToEnrollment = async (
 const findOrderByIdWithDetails = async (orderId) => {
   try {
     const pool = await getConnection();
-    // Lấy thông tin Order cơ bản
     const orderRequest = pool.request();
     orderRequest.input('OrderID', sql.BigInt, orderId);
     const orderResult = await orderRequest.query(`
@@ -182,7 +179,6 @@ const findOrderByIdWithDetails = async (orderId) => {
     const order = orderResult.recordset[0];
     if (!order) return null;
 
-    // Lấy Order Items và thông tin Course
     const itemsRequest = pool.request();
     itemsRequest.input('OrderID', sql.BigInt, orderId);
     const itemsResult = await itemsRequest.query(`
@@ -260,6 +256,27 @@ const findOrdersByAccountId = async (accountId, options = {}) => {
     throw error;
   }
 };
+
+/**
+ * Đếm số lượng đơn hàng đang sử dụng một PromotionID cụ thể.
+ * @param {number} promotionId
+ * @returns {Promise<number>} - Số lượng đơn hàng.
+ */
+const countOrdersByPromotionId = async (promotionId) => {
+  try {
+    const pool = await getConnection();
+    const request = pool.request();
+    request.input('PromotionID', sql.Int, promotionId);
+    const result = await request.query(
+      'SELECT COUNT(OrderID) as orderCount FROM Orders WHERE PromotionID = @PromotionID'
+    );
+    return result.recordset[0].orderCount;
+  } catch (error) {
+    logger.error(`Error counting orders for promotion ${promotionId}:`, error);
+    throw error;
+  }
+};
+
 module.exports = {
   createOrder,
   createOrderItems,
@@ -267,4 +284,5 @@ module.exports = {
   linkOrderItemToEnrollment,
   findOrderByIdWithDetails,
   findOrdersByAccountId,
+  countOrdersByPromotionId,
 };

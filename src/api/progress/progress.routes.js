@@ -6,23 +6,29 @@ const { authenticate } = require('../../middlewares/auth.middleware');
 
 const router = express.Router();
 
-// Áp dụng authenticate cho tất cả các route progress
 router.use(authenticate);
 
-// Route cập nhật tiến độ cho lesson cụ thể
+/**
+ * Cập nhật tiến độ cho lesson cụ thể
+ */
 router.post(
   '/lessons/:lessonId/complete',
   validate(progressValidation.markCompletion),
   progressController.markLessonCompletion
 );
 
+/**
+ * Cập nhật vị trí cuối cùng đã xem của lesson
+ */
 router.patch(
   '/lessons/:lessonId/position',
   validate(progressValidation.updatePosition),
   progressController.updateLastWatchedPosition
 );
 
-// Route lấy tiến độ tổng quan cho khóa học
+/**
+ * Lấy tiến độ tổng quan cho khóa học
+ */
 router.get(
   '/courses/:courseId',
   validate(progressValidation.getCourseProgress),

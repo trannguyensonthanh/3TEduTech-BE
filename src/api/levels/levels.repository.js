@@ -4,6 +4,9 @@ const { getConnection, sql } = require('../../database/connection');
 const { toCamelCaseObject } = require('../../utils/caseConverter');
 const logger = require('../../utils/logger');
 
+/**
+ * Create a new level
+ */
 const createLevel = async ({ levelName }) => {
   try {
     const pool = await getConnection();
@@ -21,6 +24,9 @@ const createLevel = async ({ levelName }) => {
   }
 };
 
+/**
+ * Find a level by its ID
+ */
 const findLevelById = async (levelId) => {
   try {
     const pool = await getConnection();
@@ -36,6 +42,9 @@ const findLevelById = async (levelId) => {
   }
 };
 
+/**
+ * Find a level by its name
+ */
 const findLevelByName = async (levelName) => {
   try {
     const pool = await getConnection();
@@ -51,13 +60,15 @@ const findLevelByName = async (levelName) => {
   }
 };
 
+/**
+ * Find all levels
+ */
 const findAllLevels = async () => {
-  // Levels thường ít, không cần phân trang/searchTerm phức tạp
   try {
     const pool = await getConnection();
     const result = await pool
       .request()
-      .query('SELECT * FROM Levels ORDER BY LevelID ASC'); // Hoặc ORDER BY LevelName
+      .query('SELECT * FROM Levels ORDER BY LevelID ASC');
     return result.recordset;
   } catch (error) {
     logger.error('Error in findAllLevels repository:', error);
@@ -65,6 +76,9 @@ const findAllLevels = async () => {
   }
 };
 
+/**
+ * Update a level by its ID
+ */
 const updateLevelById = async (levelId, { levelName }) => {
   try {
     const pool = await getConnection();
@@ -85,6 +99,9 @@ const updateLevelById = async (levelId, { levelName }) => {
   }
 };
 
+/**
+ * Count courses in a level
+ */
 const countCoursesInLevel = async (levelId) => {
   try {
     const pool = await getConnection();
@@ -100,6 +117,9 @@ const countCoursesInLevel = async (levelId) => {
   }
 };
 
+/**
+ * Delete a level by its ID
+ */
 const deleteLevelById = async (levelId) => {
   try {
     const pool = await getConnection();

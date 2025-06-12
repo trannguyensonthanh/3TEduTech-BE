@@ -20,10 +20,10 @@ const createAttachment = async (attachmentData, transaction = null) => {
     'FileURL',
     sql.VarChar,
     attachmentData.FileURL || 'pending_upload'
-  ); // Placeholder
+  );
   executor.input('FileType', sql.VarChar, attachmentData.FileType);
   executor.input('FileSize', sql.BigInt, attachmentData.FileSize);
-  executor.input('CloudStorageID', sql.VarChar, null); // Ban đầu là null
+  executor.input('CloudStorageID', sql.VarChar, null);
 
   try {
     const result = await executor.query(`
@@ -58,6 +58,11 @@ const findAttachmentById = async (attachmentId) => {
   }
 };
 
+/**
+ * Tìm attachments theo LessonID.
+ * @param {number} lessonId
+ * @returns {Promise<Array<object>>}
+ */
 const findAttachmentsByLessonId = async (lessonId) => {
   try {
     const pool = await getConnection();
@@ -73,6 +78,11 @@ const findAttachmentsByLessonId = async (lessonId) => {
   }
 };
 
+/**
+ * Xóa attachment theo ID.
+ * @param {number} attachmentId
+ * @returns {Promise<number>}
+ */
 const deleteAttachmentById = async (attachmentId) => {
   try {
     const pool = await getConnection();
@@ -84,7 +94,7 @@ const deleteAttachmentById = async (attachmentId) => {
     return result.rowsAffected[0];
   } catch (error) {
     logger.error(`Error deleting attachment ${attachmentId} from DB:`, error);
-    throw error; // Ném lại để service xử lý
+    throw error;
   }
 };
 
@@ -139,13 +149,11 @@ const deleteAttachmentsByIds = async (attachmentIds, transaction) => {
     request.input(`id_att_del_${index}`, sql.Int, id)
   );
   try {
-    // Lấy CloudStorageIDs trước khi xóa để service có thể xử lý xóa file cloud
     const filesToDeleteResult = await request.query(
       `SELECT AttachmentID, CloudStorageID FROM LessonAttachments WHERE AttachmentID IN (${idPlaceholders}) AND CloudStorageID IS NOT NULL;`
     );
     const filesToDelete = filesToDeleteResult.recordset;
 
-    // Thực hiện xóa khỏi DB
     const deleteResult = await request.query(
       `DELETE FROM LessonAttachments WHERE AttachmentID IN (${idPlaceholders});`
     );
@@ -153,7 +161,6 @@ const deleteAttachmentsByIds = async (attachmentIds, transaction) => {
       `Deleted ${deleteResult.rowsAffected[0]} attachment records from DB.`
     );
 
-    // Trả về danh sách file cần xóa khỏi cloud (Service sẽ xử lý việc này)
     return { deletedCount: deleteResult.rowsAffected[0], filesToDelete };
   } catch (error) {
     logger.error(

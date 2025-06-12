@@ -7,7 +7,6 @@ const { catchAsync } = require('../../utils/catchAsync');
 const ApiError = require('../../core/errors/ApiError');
 const logger = require('../../utils/logger');
 
-// --- Instructor's own actions ---
 const getMyProfile = catchAsync(async (req, res) => {
   const profile = await instructorService.getMyInstructorProfile(req.user.id);
   res.status(httpStatus.OK).send(profile);
@@ -55,21 +54,12 @@ const removeMySocialLink = catchAsync(async (req, res) => {
   res.status(httpStatus.OK).send({ socialLinks: links });
 });
 
-// --- Public Actions ---
 const getInstructorPublicProfile = catchAsync(async (req, res) => {
   const profile = await instructorService.getInstructorPublicProfile(
     req.params.instructorId
   );
   res.status(httpStatus.OK).send(profile);
 });
-
-// const updateMyBankInfo = catchAsync(async (req, res) => {
-//   const bankInfo = await instructorService.updateMyBankInfo(
-//     req.user.id,
-//     req.body
-//   );
-//   res.status(httpStatus.OK).send(bankInfo);
-// });
 
 const getInstructors = catchAsync(async (req, res) => {
   const filterOptions = pick(req.query, ['searchTerm', 'skillId', 'minRating']);
@@ -81,14 +71,6 @@ const getInstructors = catchAsync(async (req, res) => {
   );
   res.status(httpStatus.OK).send(result);
 });
-
-// const getInstructorDetail = catchAsync(async (req, res) => {
-//   const instructor = await instructorService.getInstructorBySlugOrId(req.params.instructorIdOrSlug);
-//   if (!instructor) {
-//     throw new ApiError(httpStatus.NOT_FOUND, 'Instructor not found');
-//   }
-//   res.send(instructor);
-// });
 
 const getMyStudents = catchAsync(async (req, res) => {
   const instructorId = req.user.id;
@@ -121,9 +103,7 @@ module.exports = {
   addOrUpdateMySocialLink,
   removeMySocialLink,
   getInstructorPublicProfile,
-  // updateMyBankInfo,
   getInstructors,
-  // getInstructorDetail,
   getMyFinancialOverview,
   getMyStudents,
 };

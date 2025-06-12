@@ -21,6 +21,7 @@ router.get(
   paymentController.handleVnpayReturn
 );
 
+// Route tạo session thanh toán Stripe
 router.post(
   '/stripe/create-checkout-session',
   authenticate,
@@ -28,11 +29,36 @@ router.post(
   paymentController.createStripeCheckoutSession
 );
 
+// Route tạo hóa đơn thanh toán Crypto
 router.post(
   '/crypto/create-invoice',
   authenticate,
   validate(paymentValidation.createCryptoInvoice),
   paymentController.createCryptoInvoice
+);
+
+// Route tạo order PayPal
+router.post(
+  '/paypal/create-order',
+  authenticate,
+  validate(paymentValidation.createPayPalOrder),
+  paymentController.createPayPalOrder
+);
+
+// Route capture order PayPal
+router.post(
+  '/paypal/capture-order',
+  authenticate,
+  validate(paymentValidation.capturePayPalOrder),
+  paymentController.capturePayPalOrder
+);
+
+// Route tạo URL thanh toán MoMo
+router.post(
+  '/momo/create-payment-url',
+  authenticate,
+  validate(paymentValidation.createMomoUrl),
+  paymentController.createMomoPaymentUrl
 );
 
 module.exports = router;

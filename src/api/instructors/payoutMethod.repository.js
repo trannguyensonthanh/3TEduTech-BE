@@ -1,4 +1,3 @@
-// Import thêm ApiError và httpStatus nếu cần ném lỗi từ repo
 const httpStatus = require('http-status').status;
 const ApiError = require('../../core/errors/ApiError');
 
@@ -16,7 +15,7 @@ const addPayoutMethod = async (data) => {
     const request = pool.request();
     request.input('AccountID', sql.BigInt, data.AccountID);
     request.input('MethodID', sql.VarChar, data.MethodID);
-    request.input('Details', sql.NVarChar, data.Details); // Truyền JSON string
+    request.input('Details', sql.NVarChar, data.Details);
     request.input('IsPrimary', sql.Bit, data.IsPrimary || 0);
     request.input('Status', sql.VarChar, data.Status || 'ACTIVE');
 
@@ -29,13 +28,11 @@ const addPayoutMethod = async (data) => {
   } catch (error) {
     logger.error('Error adding payout method:', error);
     if (error.number === 2627 || error.number === 2601) {
-      // Unique AccountID + MethodID
       throw new ApiError(
         httpStatus.BAD_REQUEST,
         `Bạn đã thêm phương thức ${data.MethodID} này rồi.`
       );
     }
-    // Lỗi JSON constraint
     if (error.message.includes('JSON')) {
       throw new ApiError(
         httpStatus.BAD_REQUEST,
@@ -61,7 +58,7 @@ const updatePayoutMethod = async (payoutMethodId, updateData) => {
 
     const setClauses = ['UpdatedAt = @UpdatedAt'];
     if (updateData.Details !== undefined) {
-      request.input('Details', sql.NVarChar, updateData.Details); // JSON string
+      request.input('Details', sql.NVarChar, updateData.Details);
       setClauses.push('Details = @Details');
     }
     if (updateData.Status !== undefined) {
@@ -132,7 +129,7 @@ const findPayoutMethodsByAccountId = async (accountId) => {
             FROM InstructorPayoutMethods ipm
             JOIN PaymentMethods pm ON ipm.MethodID = pm.MethodID
             WHERE ipm.AccountID = @AccountID
-            ORDER BY IsPrimary DESC, UpdatedAt DESC; -- Ưu tiên primary, sau đó là mới nhất
+            ORDER BY IsPrimary DESC, UpdatedAt DESC;
         `);
     return result.recordset;
   } catch (error) {
@@ -204,7 +201,6 @@ const setPrimaryPayoutMethod = async (
   payoutMethodIdToSetPrimary,
   transaction
 ) => {
-  // Bỏ primary cũ
   const clearRequest = transaction.request();
   clearRequest.input('AccountID', sql.BigInt, accountId);
   clearRequest.input('PayoutMethodID', sql.BigInt, payoutMethodIdToSetPrimary);
@@ -215,7 +211,6 @@ const setPrimaryPayoutMethod = async (
         WHERE AccountID = @AccountID AND PayoutMethodID != @PayoutMethodID AND IsPrimary = 1;
     `);
 
-  // Set primary mới
   const setRequest = transaction.request();
   setRequest.input('PayoutMethodID', sql.BigInt, payoutMethodIdToSetPrimary);
   setRequest.input('IsPrimaryTrue', sql.Bit, 1);

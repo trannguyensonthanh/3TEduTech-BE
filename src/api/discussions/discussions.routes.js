@@ -4,94 +4,96 @@ const express = require('express');
 const validate = require('../../middlewares/validation.middleware');
 const discussionValidation = require('./discussions.validation');
 const discussionController = require('./discussions.controller');
-const { authenticate } = require('../../middlewares/auth.middleware'); // Luôn cần đăng nhập
+const { authenticate } = require('../../middlewares/auth.middleware');
 
 const router = express.Router();
 
-// Áp dụng authenticate cho tất cả route discussions
+// Tất cả các route trong file này đều yêu cầu xác thực người dùng (đã đăng nhập).
 router.use(authenticate);
 
-// --- Routes thao tác trên Thread cụ thể ---
+// --- Quản lý một thread cụ thể ---
 router
   .route('/threads/:threadId')
+  // Cập nhật thông tin thread (ví dụ: tiêu đề)
   .patch(
-    // Update thread title
     validate(discussionValidation.updateThread),
     discussionController.updateThread
   )
+  // Xóa một thread
   .delete(
-    // Delete thread
     validate(discussionValidation.deleteThread),
     discussionController.deleteThread
   );
 
+// --- Cập nhật trạng thái đóng/mở của một thread ---
 router.patch(
   '/threads/:threadId/status',
   validate(discussionValidation.updateThreadStatus),
   discussionController.updateThreadStatus
 );
 
-// --- Routes thao tác trên Post cụ thể ---
+// --- Quản lý một bài viết (post) cụ thể ---
 router
   .route('/posts/:postId')
+  // Cập nhật nội dung một bài viết
   .patch(
-    // Update post text
     validate(discussionValidation.updatePost),
     discussionController.updatePost
   )
+  // Xóa một bài viết
   .delete(
-    // Delete post
     validate(discussionValidation.deletePost),
     discussionController.deletePost
   );
 
-// --- Routes lấy posts hoặc tạo post cho thread ---
+// --- Quản lý các bài viết (posts) trong một thread ---
 router
   .route('/threads/:threadId/posts')
-  .get(
-    // Lấy danh sách posts của thread
-    validate(discussionValidation.getPosts),
-    discussionController.getPosts
-  )
+  // Lấy danh sách các bài viết của một thread
+  .get(validate(discussionValidation.getPosts), discussionController.getPosts)
+  // Tạo một bài viết mới trong thread
   .post(
-    // Tạo post mới (reply)
     validate(discussionValidation.createPost),
     discussionController.createPost
   );
 
-// --- Routers lồng vào course/lesson (sẽ được mount từ bên ngoài) ---
+// --- Router cho các thảo luận trong phạm vi một KHÓA HỌC ---
+// (Dùng để gắn vào /api/courses/:courseId/discussions)
 const courseScopedRouter = express.Router({ mergeParams: true });
-courseScopedRouter.use(authenticate); // Đảm bảo authenticate ở đây nữa
+courseScopedRouter.use(authenticate);
 courseScopedRouter
   .route('/')
+  // Tạo thread mới trong khóa học
   .post(
-    // Tạo thread mới cho course
     validate(discussionValidation.createThread),
     discussionController.createThread
   )
+  // Lấy danh sách các thread trong khóa học
   .get(
-    // Lấy danh sách threads của course
     validate(discussionValidation.getThreads),
     discussionController.getThreads
   );
 
+// --- Router cho các thảo luận trong phạm vi một BÀI HỌC ---
+// (Dùng để gắn vào /api/lessons/:lessonId/discussions)
 const lessonScopedRouter = express.Router({ mergeParams: true });
 lessonScopedRouter.use(authenticate);
 lessonScopedRouter
   .route('/')
+  // Tạo thread mới trong bài học
   .post(
-    // Tạo thread mới cho lesson
     validate(discussionValidation.createThread),
     discussionController.createThread
   )
+  // Lấy danh sách các thread trong bài học
   .get(
-    // Lấy danh sách threads của lesson
     validate(discussionValidation.getThreads),
     discussionController.getThreads
   );
 
+// Xuất các router đã định nghĩa để sử dụng ở file route chính
 module.exports = {
-  discussionRouter: router, // Router chính (/v1/discussions/...)
-  courseDiscussionRouter: courseScopedRouter, // Router lồng (/v1/courses/:courseId/discussions)
-  lessonDiscussionRouter: lessonScopedRouter, // Router lồng (/v1/lessons/:lessonId/discussions)
+  discussionRouter: router,
+  courseDiscussionRouter: courseScopedRouter,
+  lessonDiscussionRouter: lessonScopedRouter,
 };

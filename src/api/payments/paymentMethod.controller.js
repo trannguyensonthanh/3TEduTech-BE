@@ -1,5 +1,5 @@
 // src/api/payments/paymentMethod.controller.js
-const httpStatus = require('http-status');
+const httpStatus = require('http-status').status;
 const paymentMethodService = require('./paymentMethod.service');
 const { catchAsync } = require('../../utils/catchAsync');
 

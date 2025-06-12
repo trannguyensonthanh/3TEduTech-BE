@@ -69,6 +69,14 @@ const envVarsSchema = Joi.object()
     NOWPAYMENTS_API_URL: Joi.string()
       .uri()
       .default('https://api.nowpayments.io/v1'),
+    PAYPAL_CLIENT_ID: Joi.string().description('PayPal Client ID'),
+    PAYPAL_CLIENT_SECRET: Joi.string().description('PayPal Client Secret'),
+    PAYPAL_API_URL: Joi.string().uri().description('PayPal API Base URL'),
+    // MOMO Payment Config
+    MOMO_PARTNER_CODE: Joi.string().description('MoMo Partner Code'),
+    MOMO_ACCESS_KEY: Joi.string().description('MoMo Access Key'),
+    MOMO_SECRET_KEY: Joi.string().description('MoMo Secret Key'),
+    MOMO_API_URL: Joi.string().uri().description('MoMo API Base URL'),
   })
   .unknown();
 
@@ -151,5 +159,16 @@ module.exports = {
     apiKey: envVars.NOWPAYMENTS_API_KEY,
     ipnSecret: envVars.NOWPAYMENTS_IPN_SECRET,
     apiUrl: envVars.NOWPAYMENTS_API_URL,
+  },
+  paypal: {
+    clientId: envVars.PAYPAL_CLIENT_ID,
+    clientSecret: envVars.PAYPAL_CLIENT_SECRET,
+    apiUrl: envVars.PAYPAL_API_URL,
+  },
+  momo: {
+    partnerCode: envVars.MOMO_PARTNER_CODE,
+    accessKey: envVars.MOMO_ACCESS_KEY,
+    secretKey: envVars.MOMO_SECRET_KEY,
+    apiUrl: envVars.MOMO_API_URL,
   },
 };

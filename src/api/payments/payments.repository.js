@@ -3,7 +3,7 @@ const { isNaN } = require('lodash');
 const ApiError = require('../../core/errors/ApiError');
 const { getConnection, sql } = require('../../database/connection');
 const logger = require('../../utils/logger');
-const PaymentStatus = require('../../core/enums/PaymentStatus'); // Sẽ tạo enum này
+const PaymentStatus = require('../../core/enums/PaymentStatus');
 
 /**
  * Tạo bản ghi CoursePayments mới.
@@ -17,34 +17,33 @@ const createCoursePayment = async (paymentData, transaction = null) => {
     : (await getConnection()).request();
 
   executor.input('OrderID', sql.BigInt, paymentData.OrderID);
-  executor.input('FinalAmount', sql.Decimal(18, 4), paymentData.FinalAmount); // Số tiền thực tế user trả (đã tính promotion)
+  executor.input('FinalAmount', sql.Decimal(18, 4), paymentData.FinalAmount);
   executor.input('PaymentMethodID', sql.VarChar, paymentData.PaymentMethodID);
   executor.input(
     'OriginalCurrencyID',
     sql.VarChar,
     paymentData.OriginalCurrencyID
-  ); // Thường là VND cho VNPay
+  );
   executor.input(
     'OriginalAmount',
     sql.Decimal(18, 4),
     paymentData.OriginalAmount
-  ); // Số tiền VNPay trả về (amount/100)
+  );
   executor.input(
     'ExternalTransactionID',
     sql.VarChar,
     paymentData.ExternalTransactionID
-  ); // vnp_TransactionNo
+  );
   executor.input(
     'ConvertedCurrencyID',
     sql.VarChar,
     paymentData.ConvertedCurrencyID
-  ); // Thường là VND
+  );
   executor.input(
     'ConvertedTotalAmount',
     sql.Decimal(18, 4),
     paymentData.ConvertedTotalAmount
-  ); // Thường bằng FinalAmount
-  // ConversionRate có thể là 1 nếu currency gốc và đích giống nhau
+  );
   executor.input(
     'ConversionRate',
     sql.Decimal(24, 12),
@@ -64,8 +63,8 @@ const createCoursePayment = async (paymentData, transaction = null) => {
     'TransactionCompletedAt',
     sql.DateTime2,
     paymentData.TransactionCompletedAt
-  ); // Thời gian từ VNPay nếu thành công/thất bại
-  executor.input('AdditionalInfo', sql.NVarChar, paymentData.AdditionalInfo); // Lưu trữ JSON response từ VNPay?
+  );
+  executor.input('AdditionalInfo', sql.NVarChar, paymentData.AdditionalInfo);
 
   try {
     const result = await executor.query(`
@@ -85,11 +84,9 @@ const createCoursePayment = async (paymentData, transaction = null) => {
   } catch (error) {
     logger.error('Error creating course payment:', error);
     if (error.number === 2627 || error.number === 2601) {
-      // Lỗi unique OrderID
       logger.warn(
         `Attempt to create duplicate payment record for OrderID=${paymentData.OrderID}`
       );
-      // Có thể tìm và trả về payment cũ nếu logic cho phép? Hoặc throw lỗi
       throw new ApiError(
         httpStatus.INTERNAL_SERVER_ERROR,
         'Lỗi khi tạo bản ghi thanh toán (trùng lặp).'

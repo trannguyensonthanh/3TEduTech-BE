@@ -37,6 +37,7 @@ const updateSection = {
 const deleteSection = {
   params: Joi.object().keys({
     sectionId: Joi.number().integer().required(),
+    courseId: Joi.number().integer().required(),
   }),
 };
 

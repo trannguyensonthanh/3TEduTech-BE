@@ -95,7 +95,7 @@ const findSectionsByCourseId = async (courseId) => {
     const result = await request.query(`
             SELECT *
             FROM Sections
-            WHERE CourseID = @CourseID
+            WHERE CourseID = @CourseID AND IsArchived = 0
             ORDER BY SectionOrder ASC;
         `);
     return result.recordset;
@@ -219,7 +219,7 @@ const findAllSectionsWithDetails = async (courseId, transaction = null) => {
     const sectionsResult = await executor.query(`
           SELECT *
           FROM Sections
-          WHERE CourseID = @CourseID
+          WHERE CourseID = @CourseID AND IsArchived = 0
           ORDER BY SectionOrder ASC;
       `);
     const sections = sectionsResult.recordset;
@@ -305,6 +305,29 @@ const deleteSectionsByIds = async (sectionIds, transaction) => {
   }
 };
 
+/**
+ * Đánh dấu một mảng các section là đã lưu trữ (IsArchived = 1).
+ * @param {number[]} sectionIds - Mảng các SectionID.
+ * @param {object} transaction
+ * @returns {Promise<number>} - Số lượng dòng bị ảnh hưởng.
+ */
+const archiveSectionsByIds = async (sectionIds, transaction) => {
+  if (!sectionIds || sectionIds.length === 0) return 0;
+  const request = transaction.request();
+  const idPlaceholders = sectionIds
+    .map((_, index) => `@id_sec_arc_${index}`)
+    .join(',');
+  sectionIds.forEach((id, index) =>
+    request.input(`id_sec_arc_${index}`, sql.BigInt, id)
+  );
+
+  const result = await request.query(`
+    UPDATE Sections SET IsArchived = 1, UpdatedAt = GETDATE()
+    WHERE SectionID IN (${idPlaceholders});
+  `);
+  return result.rowsAffected[0];
+};
+
 module.exports = {
   getMaxSectionOrder,
   createSection,
@@ -315,4 +338,5 @@ module.exports = {
   updateSectionById,
   deleteSectionById,
   updateSectionsOrder,
+  archiveSectionsByIds,
 };

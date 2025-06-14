@@ -820,7 +820,7 @@ const createMomoPaymentUrl = async (orderId, accountId) => {
     );
   }
   const paymentData = {
-    amount: order.FinalAmount,
+    amount: 10000 || order.FinalAmount,
     orderId: order.OrderID.toString(),
     orderInfo: `Thanh toán cho đơn hàng #${order.OrderID}`,
     redirectUrl: `${config.frontendUrl}/payment/result?orderId=${order.OrderID}`,

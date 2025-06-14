@@ -68,9 +68,25 @@ const updateLesson = {
       description,
       lessonType: Joi.string().valid(...Object.values(LessonType)),
       isFreePreview: Joi.boolean(),
-      videoSourceType: Joi.string().valid('YOUTUBE', 'VIMEO', 'CLOUDINARY'),
-      externalVideoInput: Joi.string().max(1000).allow(null, ''),
-      textContent: textContent.allow('', null),
+      videoSourceType: Joi.string()
+        .valid('YOUTUBE', 'VIMEO', 'CLOUDINARY', null)
+        .when('lessonType', {
+          is: LessonType.VIDEO,
+          then: Joi.required(),
+          otherwise: Joi.valid(''),
+        }),
+      externalVideoInput: Joi.string()
+        .max(1000)
+        .when('lessonType', {
+          is: LessonType.VIDEO,
+          then: Joi.allow(null, '').required(),
+          otherwise: Joi.allow(null, ''),
+        }),
+      textContent: Joi.when('lessonType', {
+        is: LessonType.TEXT,
+        then: Joi.required(),
+        otherwise: Joi.allow(''),
+      }),
       thumbnailUrl: url.allow(''),
       videoDurationSeconds: videoDuration,
     })

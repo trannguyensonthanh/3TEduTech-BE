@@ -240,6 +240,32 @@ const countSubtitlesByLessonId = async (lessonId, transaction = null) => {
   }
 };
 
+/**
+ * Xóa tất cả subtitles của một bài học.
+ * @param {number} lessonId
+ * @param {object} transaction
+ * @returns {Promise<number>}
+ */
+const deleteSubtitlesByLessonId = async (lessonId, transaction) => {
+  if (!lessonId) return 0;
+  const request = transaction.request();
+  request.input('LessonID', sql.BigInt, lessonId);
+  try {
+    // TODO: Nếu subtitle lưu trên cloud, cần lấy thông tin file trước khi xóa
+    const result = await request.query(`
+      DELETE FROM LessonSubtitles WHERE LessonID = @LessonID;
+    `);
+    logger.info(
+      `Deleted ${result.rowsAffected[0]} subtitles for lesson ${lessonId}.`
+    );
+
+    return result.rowsAffected[0];
+  } catch (error) {
+    logger.error(`Error deleting subtitles for lesson ${lessonId}:`, error);
+    throw error;
+  }
+};
+
 module.exports = {
   addSubtitle,
   findSubtitlesByLessonId,
@@ -249,4 +275,5 @@ module.exports = {
   findSubtitlesByLessonIds,
   deleteSubtitlesByIds,
   countSubtitlesByLessonId,
+  deleteSubtitlesByLessonId,
 };

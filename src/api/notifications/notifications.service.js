@@ -3,6 +3,16 @@ const notificationRepository = require('./notifications.repository');
 const ApiError = require('../../core/errors/ApiError');
 const logger = require('../../utils/logger');
 const { toCamelCaseObject } = require('../../utils/caseConverter');
+const eventManager = require('../../services/event.manager');
+
+/**
+ * Đếm số thông báo chưa đọc.
+ * @param {number} accountId
+ * @returns {Promise<number>}
+ */
+const countUnreadNotifications = async (accountId) => {
+  return notificationRepository.countUnreadNotifications(accountId);
+};
 
 /**
  * Tạo thông báo mới (dùng nội bộ).
@@ -29,6 +39,17 @@ const createNotification = async (
     const notification =
       await notificationRepository.createNotification(notificationData);
     logger.info(`Notification created for user ${recipientId}, type: ${type}`);
+    if (type === 'COURSE_SUBMITTED') {
+      const unreadCount = await countUnreadNotifications(recipientId);
+      eventManager.sendEventToUsers(
+        recipientId.toString(),
+        'new_notification',
+        {
+          notification: toCamelCaseObject(notification), // Gửi toàn bộ object notification mới
+          unreadCount,
+        }
+      );
+    }
     return notification;
   } catch (error) {
     logger.error(
@@ -94,15 +115,6 @@ const markAllAsRead = async (accountId) => {
     `${markedCount} notifications marked as read for user ${accountId}.`
   );
   return { markedCount };
-};
-
-/**
- * Đếm số thông báo chưa đọc.
- * @param {number} accountId
- * @returns {Promise<number>}
- */
-const countUnreadNotifications = async (accountId) => {
-  return notificationRepository.countUnreadNotifications(accountId);
 };
 
 /**

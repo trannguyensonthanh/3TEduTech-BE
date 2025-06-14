@@ -149,4 +149,32 @@ router.use('/:courseId/sections', sectionRouter);
 router.use('/:courseId/reviews', courseScopedReviewRouter);
 router.use('/:courseId/discussions', courseDiscussionRouter);
 
+/**
+ * Tìm yêu cầu phê duyệt đang chờ xử lý theo CourseID.
+ */
+router.get(
+  '/:courseId/pending-approval-request',
+  authenticate,
+  authorize([Roles.INSTRUCTOR, Roles.ADMIN, Roles.SUPERADMIN]),
+  validate(courseValidation.findPendingApprovalRequestByCourseId), // sử dụng validate lấy courseId
+  courseController.getPendingApprovalRequestByCourseId
+);
+
+router.post(
+  '/:courseId/create-update-session',
+  authenticate,
+  authorize([Roles.INSTRUCTOR, Roles.ADMIN, Roles.SUPERADMIN]),
+  validate(courseValidation.deleteCourse), // Dùng validation lấy courseId là được
+  courseController.createUpdateSession
+);
+
+// API hủy phiên cập nhật
+router.post(
+  '/:updateCourseId/cancel-update',
+  authenticate,
+  authorize([Roles.INSTRUCTOR, Roles.ADMIN, Roles.SUPERADMIN]),
+  validate(courseValidation.cancelUpdateCourse), // Dùng validation có param là courseId (đổi tên trong service)
+  courseController.cancelUpdate
+);
+
 module.exports = router;

@@ -23,27 +23,26 @@ const lessonAttachmentRepository = require('../lessons/lessonAttachment.reposito
 const { getConnection, sql } = require('../../database/connection');
 const authRepository = require('../auth/auth.repository');
 const languageRepository = require('../languages/languages.repository');
-const { toCamelCaseObject } = require('../../utils/caseConverter');
+const {
+  toCamelCaseObject,
+  toPascalCaseObject,
+} = require('../../utils/caseConverter');
 const userRepository = require('../users/users.repository');
 const pricingUtil = require('../../utils/pricing.util');
+const quizRepository = require('../quizzes/quizzes.repository');
+const subtitleRepository = require('../lessons/subtitle.repository');
+const LessonType = require('../../core/enums/LessonType');
 
 /**
  * Tạo khóa học mới với payload tối giản (bởi Instructor).
- * @param {object} courseData - { courseName, categoryId, language, levelId? }.
- * @param {number} instructorId - ID của giảng viên tạo khóa học (từ req.user).
- * @returns {Promise<object>} - Khóa học mới được tạo (trạng thái DRAFT).
  */
 const createCourse = async (courseData, instructorId) => {
   const { courseName, categoryId, language, levelId } = courseData;
-
-  // 1. Lấy thông tin cần thiết để điền giá trị mặc định
   const [category, instructorProfile, defaultLevel] = await Promise.all([
     categoryRepository.findCategoryById(categoryId),
     userRepository.findUserProfileById(instructorId),
-    levelRepository.findLevelById(levelId || 1), // <<< Lấy level được cung cấp hoặc mặc định ID=1 ("Beginner")
+    levelRepository.findLevelById(levelId || 1),
   ]);
-
-  // 2. Kiểm tra sự tồn tại của các bản ghi liên quan
   if (!category) {
     throw new ApiError(httpStatus.BAD_REQUEST, 'Danh mục không hợp lệ.');
   }
@@ -54,16 +53,11 @@ const createCourse = async (courseData, instructorId) => {
     );
   }
   if (!defaultLevel) {
-    // Kiểm tra nếu levelId được cung cấp nhưng không hợp lệ
     throw new ApiError(httpStatus.BAD_REQUEST, `Cấp độ không hợp lệ.`);
   }
-
-  // 3. Tạo slug duy nhất
   const baseSlug = generateSlug(courseName);
   const randomSuffix = crypto.randomBytes(4).toString('hex');
   const uniqueSlug = `${baseSlug}-${randomSuffix}`;
-
-  // 4. Chuẩn bị dữ liệu đầy đủ để tạo khóa học
   const fullCourseData = {
     CourseName: courseName,
     Slug: uniqueSlug,
@@ -86,33 +80,23 @@ const createCourse = async (courseData, instructorId) => {
     ReviewCount: 0,
     AverageRating: null,
   };
-
   const createdCourse = await courseRepository.createCourse(fullCourseData);
   logger.info(
     `Draft course "${createdCourse.CourseName}" (ID: ${createdCourse.CourseID}) created by instructor ${instructorId}.`
   );
-
   return toCamelCaseObject(createdCourse);
 };
 
 /**
  * Lấy danh sách khóa học (có thể lọc theo nhiều tiêu chí).
- * Dùng cho cả public, instructor và admin, quyền xem dữ liệu được kiểm soát ở repository/service.
- * @param {object} filters - Bộ lọc (categoryId, levelId, instructorId, statusId, searchTerm,...).
- * @param {object} options - Phân trang và sắp xếp (page, limit, sortBy).
- * @param {object|null} user - Thông tin user đang đăng nhập (nếu có).
- * @param {string} targetCurrency - Mã tiền tệ muốn hiển thị giá (ví dụ: 'USD', 'VND').
- * @returns {Promise<object>} - { courses, total, page, limit, totalPages }.
  */
 const getCourses = async (
-  // Không có lỗi
   filters = {},
   options = {},
   user = null,
   targetCurrency
 ) => {
   const effectiveFilters = { ...filters };
-
   if (user) {
     if (user.role === Roles.INSTRUCTOR && effectiveFilters.userPage === false) {
       if (
@@ -142,15 +126,11 @@ const getCourses = async (
   } else {
     effectiveFilters.statusId = CourseStatus.PUBLISHED;
   }
-
-  console.log('effectiveFilters', effectiveFilters);
-
   const { page = 1, limit = 10 } = options;
   const result = await courseRepository.findAllCourses(
     effectiveFilters,
     options
   );
-
   const coursesWithPricing = await Promise.all(
     result.courses.map(async (course) => {
       const pricing = await pricingUtil.createPricingObject(
@@ -162,7 +142,6 @@ const getCourses = async (
       return { ...toCamelCaseObject(course), pricing };
     })
   );
-
   return {
     courses: coursesWithPricing,
     total: result.total,
@@ -174,45 +153,31 @@ const getCourses = async (
 
 /**
  * Lấy chi tiết một khóa học bằng slug, bao gồm TOÀN BỘ curriculum.
- * Xử lý quyền xem dựa trên trạng thái khóa học và vai trò người dùng.
- * @param {string} slug
- * @param {object|null} user - Thông tin user đang đăng nhập (nếu có).
- * @returns {Promise<object>} - Chi tiết khóa học với cấu trúc nội dung.
  */
 const getCourseBySlug = async (slug, user = null, targetCurrency) => {
   const isAdmin =
     user && (user.role === Roles.ADMIN || user.role === Roles.SUPERADMIN);
   const isPotentiallyInstructor = user && user.role === Roles.INSTRUCTOR;
-
-  // Lấy dữ liệu đầy đủ, bao gồm cả bản nháp nếu là admin hoặc instructor
   const includeNonPublished = isAdmin || isPotentiallyInstructor;
   const course = await courseRepository.findCourseWithFullDetailsBySlug(
     slug,
     includeNonPublished
   );
-
   if (!course) {
     throw new ApiError(
       httpStatus.NOT_FOUND,
       'Course not found or not accessible.'
     );
   }
-
-  // Kiểm tra lại quyền truy cập cụ thể sau khi đã lấy được dữ liệu
   const isPublished = course.StatusID === CourseStatus.PUBLISHED;
   const isOwnerInstructor =
     isPotentiallyInstructor && course.InstructorID === user.id;
-
   if (!isPublished && !isAdmin && !isOwnerInstructor) {
-    // Nếu không publish VÀ người xem không phải admin/owner -> Forbidden
     throw new ApiError(
       httpStatus.FORBIDDEN,
       'You do not have permission to view this course.'
     );
   }
-
-  // 4. Kiểm tra trạng thái đăng ký nếu là người dùng thông thường xem khóa học published
-  // --- Xử lý ẩn nội dung bài học nếu cần (dựa trên enrollment) ---
   let isEnrolled = false;
   if (user && !isAdmin && !isOwnerInstructor) {
     try {
@@ -227,25 +192,18 @@ const getCourseBySlug = async (slug, user = null, targetCurrency) => {
       );
     }
   }
-
-  // 5. Xác định quyền xem TOÀN BỘ NỘI DUNG (video private, text trả phí)
   const canViewFullContent = isAdmin || isOwnerInstructor || isEnrolled;
-
-  // Lặp qua curriculum để điều chỉnh dữ liệu trả về
   if (course.sections) {
     course.sections.forEach((section) => {
       if (section.lessons) {
         section.lessons.forEach((lesson) => {
-          // Ẩn nội dung nếu không có quyền xem full
           if (!lesson.IsFreePreview && !canViewFullContent) {
             lesson.TextContent =
               '*** Content available for enrolled students only ***';
-            // Không cần xóa video URL vì Signed URL sẽ được lấy qua API riêng
           }
           if (lesson.VideoSourceType === 'CLOUDINARY') {
             lesson.ExternalVideoID = lesson.ExternalVideoID ? 'uploaded' : null;
           }
-          // Xóa đáp án đúng của Quiz nếu user không phải owner/admin
           if (!isAdmin && !isOwnerInstructor && lesson.questions) {
             lesson.questions.forEach((q) => {
               q.options?.forEach((o) => delete o.IsCorrectAnswer);
@@ -255,7 +213,6 @@ const getCourseBySlug = async (slug, user = null, targetCurrency) => {
       }
     });
   }
-
   course.isEnrolled = canViewFullContent;
   if (user && course.isEnrolled) {
     try {
@@ -264,7 +221,6 @@ const getCourseBySlug = async (slug, user = null, targetCurrency) => {
         course.CourseID
       );
       logger.debug(`Course progress data for user ${user.id}:`, progressData);
-
       course.userProgress = progressData.progressDetails.reduce((acc, p) => {
         acc[p.LessonID] = {
           isCompleted: p.IsCompleted,
@@ -279,7 +235,6 @@ const getCourseBySlug = async (slug, user = null, targetCurrency) => {
           progressError.statusCode === httpStatus.FORBIDDEN
         )
       ) {
-        // Bỏ qua lỗi Forbidden (chưa enroll)
         logger.error(
           `Error fetching progress for user ${user.id}, course ${course.CourseID}:`,
           progressError
@@ -301,30 +256,21 @@ const getCourseBySlug = async (slug, user = null, targetCurrency) => {
 
 /**
  * Cập nhật khóa học (bởi Instructor hoặc Admin).
- * @param {number} courseId
- * @param {object} updateBody - Dữ liệu cập nhật.
- * @param {object} user - Người dùng thực hiện (để kiểm tra quyền).
- * @returns {Promise<object>} - Khóa học đã cập nhật.
  */
 const updateCourse = async (courseId, updateBody, user) => {
   const course = await courseRepository.findCourseById(courseId, true);
   if (!course) {
     throw new ApiError(httpStatus.NOT_FOUND, 'Không tìm thấy khóa học.');
   }
-
   const isAdmin = user.role === Roles.ADMIN || user.role === Roles.SUPERADMIN;
   const isOwnerInstructor =
     user.role === Roles.INSTRUCTOR && course.InstructorID === user.id;
-
-  // Kiểm tra quyền cập nhật
   if (!isAdmin && !isOwnerInstructor) {
     throw new ApiError(
       httpStatus.FORBIDDEN,
       'Bạn không có quyền cập nhật khóa học này.'
     );
   }
-
-  // Giảng viên chỉ được sửa khi khóa học ở trạng thái DRAFT hoặc REJECTED
   if (
     isOwnerInstructor &&
     ![CourseStatus.DRAFT, CourseStatus.REJECTED].includes(course.StatusID)
@@ -334,35 +280,26 @@ const updateCourse = async (courseId, updateBody, user) => {
       `Bạn chỉ có thể cập nhật khóa học khi ở trạng thái ${CourseStatus.DRAFT} hoặc ${CourseStatus.REJECTED}.`
     );
   }
-
-  // Admin không được phép đổi InstructorID qua API này
   if (isAdmin && updateBody.instructorId !== undefined) {
     delete updateBody.instructorId;
     logger.warn(
       `Admin attempt to change instructorId for course ${courseId} was blocked.`
     );
   }
-  // Admin không nên đổi trực tiếp StatusID qua API này, nên dùng API duyệt/từ chối
   if (isAdmin && updateBody.statusId !== undefined) {
     delete updateBody.statusId;
     logger.warn(
       `Admin attempt to change statusId directly for course ${courseId} was blocked. Use approve/reject API.`
     );
   }
-  // Không cho phép instructor tự đổi status hoặc IsFeatured
   if (isOwnerInstructor) {
     delete updateBody.statusId;
-    delete updateBody.isFeatured;
   }
-
   const dataToUpdate = { ...updateBody };
   const pool = await getConnection();
   const transaction = new sql.Transaction(pool);
-
   try {
     await transaction.begin();
-
-    // Xử lý slug nếu tên khóa học thay đổi
     if (updateBody.courseName && updateBody.courseName !== course.CourseName) {
       let newSlug = generateSlug(updateBody.courseName);
       const existingSlug = await courseRepository.findCourseIdBySlug(newSlug);
@@ -371,8 +308,6 @@ const updateCourse = async (courseId, updateBody, user) => {
       }
       dataToUpdate.Slug = newSlug;
     }
-
-    // Kiểm tra Category/Level nếu có thay đổi
     if (updateBody.categoryId && updateBody.categoryId !== course.CategoryID) {
       const category = await categoryRepository.findCategoryById(
         updateBody.categoryId
@@ -385,9 +320,7 @@ const updateCourse = async (courseId, updateBody, user) => {
       if (!level)
         throw new ApiError(httpStatus.BAD_REQUEST, 'Cấp độ không hợp lệ.');
     }
-
     if (updateBody.language !== undefined) {
-      // Chỉ kiểm tra nếu có gửi lên
       const langExists = await languageRepository.findLanguageByCode(
         updateBody.language
       );
@@ -399,7 +332,6 @@ const updateCourse = async (courseId, updateBody, user) => {
       }
       dataToUpdate.Language = updateBody.language;
     }
-
     const updatedCourse = await courseRepository.updateCourseById(
       courseId,
       dataToUpdate,
@@ -411,7 +343,6 @@ const updateCourse = async (courseId, updateBody, user) => {
           updateBody
         )}`
       );
-
       const currentCourse = await courseRepository.findCourseById(
         courseId,
         true
@@ -419,12 +350,10 @@ const updateCourse = async (courseId, updateBody, user) => {
       await transaction.commit();
       return currentCourse;
     }
-
     await transaction.commit();
     return toCamelCaseObject(updatedCourse);
   } catch (error) {
     logger.error(`Error updating course ${courseId}:`, error);
-
     if (transaction && transaction.active) {
       try {
         await transaction.rollback();
@@ -436,7 +365,6 @@ const updateCourse = async (courseId, updateBody, user) => {
         );
       }
     }
-
     if (error instanceof ApiError) throw error;
     throw new ApiError(
       httpStatus.INTERNAL_SERVER_ERROR,
@@ -447,27 +375,21 @@ const updateCourse = async (courseId, updateBody, user) => {
 
 /**
  * Xóa khóa học (bởi Instructor hoặc Admin).
- * @param {number} courseId
- * @param {object} user - Người dùng thực hiện.
- * @returns {Promise<void>}
  */
 const deleteCourse = async (courseId, user) => {
   const course = await courseRepository.findCourseById(courseId, true);
   if (!course) {
     throw new ApiError(httpStatus.NOT_FOUND, 'Không tìm thấy khóa học.');
   }
-
   const isAdmin = user.role === Roles.ADMIN || user.role === Roles.SUPERADMIN;
   const isOwnerInstructor =
     user.role === Roles.INSTRUCTOR && course.InstructorID === user.id;
-
   if (!isAdmin && !isOwnerInstructor) {
     throw new ApiError(
       httpStatus.FORBIDDEN,
       'Bạn không có quyền xóa khóa học này.'
     );
   }
-
   if (course.ThumbnailPublicId) {
     try {
       await cloudinaryUtil.deleteAsset(course.ThumbnailPublicId, {
@@ -483,15 +405,11 @@ const deleteCourse = async (courseId, user) => {
       );
     }
   }
-
-  // 2. Lấy tất cả lessons của khóa học để xóa video và attachments
   const sections = await sectionRepository.findSectionsByCourseId(courseId);
-
   for (const section of sections) {
     const lessons = await lessonRepository.findLessonsBySectionId(
       section.SectionID
     );
-
     for (const lesson of lessons) {
       if (lesson.ExternalVideoID) {
         try {
@@ -508,13 +426,10 @@ const deleteCourse = async (courseId, user) => {
           );
         }
       }
-
-      // Xóa attachments của lesson
       const attachments =
         await lessonAttachmentRepository.findAttachmentsByLessonId(
           lesson.LessonID
         );
-
       for (const attachment of attachments) {
         if (attachment.CloudStorageID) {
           try {
@@ -534,7 +449,6 @@ const deleteCourse = async (courseId, user) => {
       }
     }
   }
-
   if (
     isOwnerInstructor &&
     ![CourseStatus.DRAFT, CourseStatus.REJECTED].includes(course.StatusID)
@@ -544,28 +458,21 @@ const deleteCourse = async (courseId, user) => {
       'Bạn chỉ có thể xóa khóa học nháp hoặc bị từ chối.'
     );
   }
-
   await courseRepository.deleteCourseById(courseId);
   logger.info(`Course ${courseId} deleted by user ${user.id}`);
 };
 
 /**
  * Cập nhật thumbnail cho khóa học.
- * @param {number} courseId
- * @param {object} file - File object từ multer (req.file).
- * @param {object} user - Người dùng thực hiện.
- * @returns {Promise<object>} - Khóa học với thumbnail đã cập nhật.
  */
 const updateCourseThumbnail = async (courseId, file, user) => {
   const course = await courseRepository.findCourseById(courseId, true);
   if (!course) {
     throw new ApiError(httpStatus.NOT_FOUND, 'Không tìm thấy khóa học.');
   }
-
   const isAdmin = user.role === Roles.ADMIN || user.role === Roles.SUPERADMIN;
   const isOwnerInstructor =
     user.role === Roles.INSTRUCTOR && course.InstructorID === user.id;
-
   if (!isAdmin && !isOwnerInstructor) {
     throw new ApiError(
       httpStatus.FORBIDDEN,
@@ -581,12 +488,9 @@ const updateCourseThumbnail = async (courseId, file, user) => {
       `Bạn chỉ có thể cập nhật khóa học khi ở trạng thái ${CourseStatus.DRAFT} hoặc ${CourseStatus.REJECTED}.`
     );
   }
-
   if (!file) {
     throw new ApiError(httpStatus.BAD_REQUEST, 'Vui lòng chọn file thumbnail.');
   }
-
-  // Xóa thumbnail cũ trên Cloudinary nếu có
   if (course.ThumbnailPublicId) {
     try {
       await cloudinaryUtil.deleteAsset(course.ThumbnailPublicId, {
@@ -602,8 +506,6 @@ const updateCourseThumbnail = async (courseId, file, user) => {
       );
     }
   }
-
-  // Upload thumbnail mới lên Cloudinary
   let uploadResult;
   try {
     const options = {
@@ -617,8 +519,6 @@ const updateCourseThumbnail = async (courseId, file, user) => {
       'Upload thumbnail thất bại.'
     );
   }
-
-  // Cập nhật DB
   const updateData = {
     ThumbnailUrl: uploadResult.secure_url,
     ThumbnailPublicId: uploadResult.public_id,
@@ -636,7 +536,6 @@ const updateCourseThumbnail = async (courseId, file, user) => {
     logger.error(
       `Failed to update course ${courseId} in DB after thumbnail upload. Uploaded public_id: ${uploadResult.public_id}`
     );
-
     try {
       await cloudinaryUtil.deleteAsset(uploadResult.public_id, {
         resource_type: 'image',
@@ -655,22 +554,17 @@ const updateCourseThumbnail = async (courseId, file, user) => {
       'Cập nhật thông tin khóa học sau khi upload thất bại.'
     );
   }
-
   return toCamelCaseObject(updatedCourse);
 };
+
 /**
  * Cập nhật video giới thiệu cho khóa học (upload lên Cloudinary dạng public).
- * @param {number} courseId
- * @param {object} file - File object từ multer (req.file).
- * @param {object} user - Người dùng thực hiện (Instructor/Admin).
- * @returns {Promise<object>} - Khóa học với IntroVideoUrl đã cập nhật.
  */
 const updateCourseIntroVideo = async (courseId, file, user) => {
-  const course = await courseRepository.findCourseById(courseId, true); // Lấy cả draft
+  const course = await courseRepository.findCourseById(courseId, true);
   if (!course) {
     throw new ApiError(httpStatus.NOT_FOUND, 'Không tìm thấy khóa học.');
   }
-
   const isAdmin = user.role === Roles.ADMIN || user.role === Roles.SUPERADMIN;
   const isOwnerInstructor =
     user.role === Roles.INSTRUCTOR && course.InstructorID === user.id;
@@ -680,7 +574,6 @@ const updateCourseIntroVideo = async (courseId, file, user) => {
       'Bạn không có quyền cập nhật khóa học này.'
     );
   }
-
   if (
     isOwnerInstructor &&
     ![CourseStatus.DRAFT, CourseStatus.REJECTED].includes(course.StatusID)
@@ -690,14 +583,12 @@ const updateCourseIntroVideo = async (courseId, file, user) => {
       `Bạn chỉ có thể cập nhật khóa học khi ở trạng thái ${CourseStatus.DRAFT} hoặc ${CourseStatus.REJECTED}.`
     );
   }
-
   if (!file) {
     throw new ApiError(
       httpStatus.BAD_REQUEST,
       'Vui lòng chọn file video giới thiệu.'
     );
   }
-
   if (course.IntroVideoPublicId) {
     try {
       await cloudinaryUtil.deleteAsset(course.IntroVideoPublicId, {
@@ -714,8 +605,6 @@ const updateCourseIntroVideo = async (courseId, file, user) => {
       );
     }
   }
-
-  // Upload video mới lên Cloudinary (dạng public)
   let uploadResult;
   try {
     const options = {
@@ -730,8 +619,6 @@ const updateCourseIntroVideo = async (courseId, file, user) => {
       'Upload video giới thiệu thất bại.'
     );
   }
-
-  // Cập nhật DB chỉ với URL công khai
   const updateData = {
     IntroVideoUrl: uploadResult.secure_url,
     IntroVideoPublicId: uploadResult.public_id,
@@ -740,7 +627,6 @@ const updateCourseIntroVideo = async (courseId, file, user) => {
     courseId,
     updateData
   );
-
   if (!updatedCourse) {
     logger.error(
       `Failed to update course ${courseId} in DB after intro video upload. Uploaded public_id: ${uploadResult.public_id}`
@@ -750,18 +636,11 @@ const updateCourseIntroVideo = async (courseId, file, user) => {
       'Cập nhật thông tin khóa học sau khi upload thất bại.'
     );
   }
-
   return toCamelCaseObject(updatedCourse);
 };
 
-// --- Course Approval Flow ---
-
 /**
  * Giảng viên gửi yêu cầu duyệt khóa học.
- * @param {number} courseId
- * @param {object} user - Giảng viên gửi.
- * @param {string} [notes] - Ghi chú của giảng viên.
- * @returns {Promise<object>} - Yêu cầu duyệt đã tạo.
  */
 const submitCourseForApproval = async (courseId, user, notes = null) => {
   const course = await courseRepository.findCourseById(courseId, true);
@@ -780,8 +659,6 @@ const submitCourseForApproval = async (courseId, user, notes = null) => {
       'Chỉ có thể gửi duyệt khóa học nháp hoặc bị từ chối.'
     );
   }
-
-  // Kiểm tra xem đã có request PENDING chưa
   const existingRequest =
     await courseRepository.findPendingApprovalRequestByCourseId(courseId);
   if (existingRequest) {
@@ -790,7 +667,6 @@ const submitCourseForApproval = async (courseId, user, notes = null) => {
       'Khóa học này đã được gửi duyệt và đang chờ xử lý.'
     );
   }
-
   const sections = await sectionRepository.findSectionsByCourseId(courseId);
   if (!sections || sections.length === 0) {
     throw new ApiError(
@@ -798,8 +674,6 @@ const submitCourseForApproval = async (courseId, user, notes = null) => {
       'Khóa học phải có ít nhất một phần (section) trước khi gửi duyệt.'
     );
   }
-
-  // Lấy danh sách bài học từ các sections
   const lessons = [];
   for (const section of sections) {
     const sectionLessons = await lessonRepository.findLessonsBySectionId(
@@ -807,15 +681,12 @@ const submitCourseForApproval = async (courseId, user, notes = null) => {
     );
     lessons.push(...sectionLessons);
   }
-
   if (!lessons || lessons.length === 0) {
     throw new ApiError(
       httpStatus.BAD_REQUEST,
       'Khóa học phải có ít nhất một bài học (lesson) trước khi gửi duyệt.'
     );
   }
-
-  // Kiểm tra từng bài học để đảm bảo dữ liệu hợp lệ
   const hasValidLessons = lessons.some(
     (lesson) => lesson.LessonName?.trim() && lesson.LessonType
   );
@@ -825,23 +696,24 @@ const submitCourseForApproval = async (courseId, user, notes = null) => {
       'Tất cả các bài học (lesson) trong khóa học phải có tên và loại hợp lệ.'
     );
   }
-  // Cập nhật trạng thái khóa học thành PENDING
   await courseRepository.updateCourseById(courseId, {
     StatusID: CourseStatus.PENDING,
   });
-
-  // Tạo request approval
-  const requestType =
-    course.StatusID === CourseStatus.REJECTED
-      ? ApprovalRequestType.RE_SUBMISSION
-      : ApprovalRequestType.INITIAL_SUBMISSION;
+  let requestType;
+  if (course.LiveCourseID) {
+    requestType = ApprovalRequestType.UPDATE_SUBMISSION;
+  } else if (course.StatusID === CourseStatus.REJECTED) {
+    requestType = ApprovalRequestType.RE_SUBMISSION;
+  } else {
+    requestType = ApprovalRequestType.INITIAL_SUBMISSION;
+  }
+  logger.info(`Submitting course ${courseId} with RequestType: ${requestType}`);
   const approvalRequest = await courseRepository.createCourseApprovalRequest({
     courseId,
     instructorId: user.id,
     requestType,
     instructorNotes: notes,
   });
-
   try {
     const course = await courseRepository.findCourseById(courseId, true);
     const message = `Giảng viên ${
@@ -851,14 +723,18 @@ const submitCourseForApproval = async (courseId, user, notes = null) => {
       Roles.ADMIN,
       Roles.SUPERADMIN,
     ]);
-    adminIds.forEach((adminId) => {
-      notificationService.createNotification(
+    for (const adminIdObj of adminIds) {
+      const adminId =
+        typeof adminIdObj === 'object' && adminIdObj.AccountID
+          ? adminIdObj.AccountID
+          : adminIdObj;
+      await notificationService.createNotification(
         adminId,
         'COURSE_SUBMITTED',
         message,
         { type: 'CourseApprovalRequest', id: approvalRequest.RequestID }
       );
-    });
+    }
   } catch (notifyError) {
     logger.error(
       `Failed to send notification for course submission ${courseId}:`,
@@ -869,12 +745,315 @@ const submitCourseForApproval = async (courseId, user, notes = null) => {
 };
 
 /**
+ * Lấy yêu cầu duyệt khóa học đang chờ xử lý (PENDING) theo CourseID.
+ */
+const getPendingApprovalRequestByCourseId = async (courseId) => {
+  const request =
+    await courseRepository.findPendingApprovalRequestByCourseId(courseId);
+  return request ? toCamelCaseObject(request) : null;
+};
+
+/**
+ * [HELPER 1] Clone CÁC THÀNH PHẦN CON của một lesson sang một lesson khác.
+ */
+async function cloneLessonSubComponents(
+  fromLesson,
+  toLessonId,
+  transaction,
+  skipQuiz = false
+) {
+  if (
+    !skipQuiz &&
+    fromLesson.lessonType === LessonType.QUIZ &&
+    fromLesson.questions?.length > 0
+  ) {
+    for (const question of fromLesson.questions) {
+      const newQuestion = await quizRepository.createQuestion(
+        toPascalCaseObject({
+          lessonId: toLessonId,
+          ...question,
+        }),
+        transaction
+      );
+      if (question.options?.length > 0) {
+        const optionsData = question.options.map((opt) =>
+          toCamelCaseObject(opt)
+        );
+        await quizRepository.createOptionsForQuestion(
+          newQuestion.QuestionID,
+          optionsData,
+          transaction
+        );
+      }
+    }
+  }
+  if (fromLesson.attachments?.length > 0) {
+    for (const attachment of fromLesson.attachments) {
+      await lessonAttachmentRepository.createAttachment(
+        toPascalCaseObject({ lessonId: toLessonId, ...attachment }),
+        transaction
+      );
+    }
+  }
+  if (fromLesson.subtitles?.length > 0) {
+    for (const subtitle of fromLesson.subtitles) {
+      await subtitleRepository.addSubtitle(
+        toPascalCaseObject({ lessonId: toLessonId, ...subtitle }),
+        transaction
+      );
+    }
+  }
+}
+
+/**
+ * [HELPER 2] Clone MỘT LESSON ĐẦY ĐỦ.
+ */
+async function cloneFullLesson(lessonToClone, newSectionId, transaction) {
+  const newLessonData = {
+    ...lessonToClone,
+    sectionId: newSectionId,
+    originalId: null,
+  };
+  const newLesson = await lessonRepository.createLesson(
+    toPascalCaseObject(newLessonData),
+    transaction
+  );
+  await cloneLessonSubComponents(
+    lessonToClone,
+    newLesson.LessonID,
+    transaction
+  );
+}
+
+/**
+ * [HELPER 3] Đồng bộ hóa Quiz cho một lesson bằng "Archive và Tạo lại".
+ */
+async function syncQuizForLesson(updateQuestions, liveLessonId, transaction) {
+  await quizRepository.archiveQuestionsByLessonId(liveLessonId, transaction);
+  if (updateQuestions?.length > 0) {
+    for (const uQuestion of updateQuestions) {
+      const newQuestion = await quizRepository.createQuestion(
+        {
+          LessonID: liveLessonId,
+          QuestionText: uQuestion.questionText,
+          Explanation: uQuestion.explanation,
+          QuestionOrder: uQuestion.questionOrder,
+        },
+        transaction
+      );
+      if (uQuestion.options?.length > 0) {
+        const optionsData = uQuestion.options.map((opt) => ({
+          optionText: opt.optionText,
+          isCorrectAnswer: opt.isCorrectAnswer,
+          optionOrder: opt.optionOrder,
+        }));
+        await quizRepository.createOptionsForQuestion(
+          newQuestion.QuestionID,
+          optionsData,
+          transaction
+        );
+      }
+    }
+  }
+}
+
+/**
+ * [HELPER 5] Đồng bộ hóa các lessons cho một section.
+ */
+async function syncLessonsForSection(
+  updateLessons,
+  liveSectionId,
+  transaction
+) {
+  const cloudFilesToDelete = [];
+  const liveLessonsRaw =
+    await lessonRepository.findAllLessonsWithDetailsBySectionIds(
+      [liveSectionId],
+      transaction
+    );
+  const liveLessons = toCamelCaseObject(
+    liveLessonsRaw.filter((l) => !l.isArchived)
+  );
+  const updateLessonsMap = new Map(
+    (updateLessons || []).map((l) => [l.originalId, l])
+  );
+  const liveLessonsMapById = new Map(liveLessons.map((l) => [l.lessonId, l]));
+  const lessonsToArchiveIds = [];
+  for (const [liveLessonId] of liveLessonsMapById.entries()) {
+    if (!updateLessonsMap.has(liveLessonId)) {
+      lessonsToArchiveIds.push(liveLessonId);
+    }
+  }
+  if (lessonsToArchiveIds.length > 0) {
+    await lessonRepository.archiveLessonsByIds(
+      lessonsToArchiveIds,
+      transaction
+    );
+  }
+  for (const updateLesson of updateLessons || []) {
+    const originalLessonId = updateLesson.originalId;
+    logger.debug(
+      `[syncLessonsForSection] Processing lesson: ${updateLesson.lessonName} (ID: ${originalLessonId})`,
+      { updateLesson }
+    );
+    if (originalLessonId && liveLessonsMapById.has(originalLessonId)) {
+      const liveLesson = liveLessonsMapById.get(originalLessonId);
+      const oldVideoId = liveLesson.externalVideoId;
+      const newVideoId = updateLesson.externalVideoId;
+      if (
+        liveLesson.lessonType === 'VIDEO' &&
+        oldVideoId &&
+        newVideoId !== oldVideoId &&
+        liveLesson.videoSourceType === 'CLOUDINARY'
+      ) {
+        cloudFilesToDelete.push({
+          publicId: oldVideoId,
+          resourceType: 'video',
+        });
+      }
+      await lessonRepository.updateLessonById(
+        originalLessonId,
+        toPascalCaseObject(updateLesson),
+        transaction
+      );
+      await syncQuizForLesson(
+        updateLesson.questions || [],
+        originalLessonId,
+        transaction
+      );
+      const attachmentsResult =
+        await lessonAttachmentRepository.deleteAttachmentsByLessonId(
+          originalLessonId,
+          transaction
+        );
+      cloudFilesToDelete.push(...attachmentsResult.filesToDelete);
+      if (updateLesson.attachments?.length > 0) {
+        for (const attachment of updateLesson.attachments) {
+          const newAttachmentData = {
+            LessonID: originalLessonId,
+            FileName: attachment.fileName,
+            FileURL: attachment.fileUrl,
+            FileType: attachment.fileType,
+            FileSize: attachment.fileSize,
+            CloudStorageID: attachment.cloudStorageId,
+          };
+          await lessonAttachmentRepository.createAttachment(
+            newAttachmentData,
+            transaction
+          );
+        }
+      }
+      await subtitleRepository.deleteSubtitlesByLessonId(
+        originalLessonId,
+        transaction
+      );
+      if (updateLesson.subtitles?.length > 0) {
+        for (const subtitle of updateLesson.subtitles) {
+          const newSubtitleData = {
+            LessonID: originalLessonId,
+            LanguageCode: subtitle.languageCode,
+            SubtitleUrl: subtitle.subtitleUrl,
+            IsDefault: subtitle.isDefault,
+          };
+          await subtitleRepository.addSubtitle(newSubtitleData, transaction);
+        }
+      }
+    } else {
+      await cloneFullLesson(updateLesson, liveSectionId, transaction);
+    }
+  }
+  return cloudFilesToDelete;
+}
+
+/**
+ * [HÀM CHÍNH - FINAL] Thực hiện logic "Smart Sync" từ bản sao sang bản gốc.
+ */
+async function syncLiveCourseFromUpdate(
+  updateCourseId,
+  liveCourseId,
+  transaction
+) {
+  logger.info(
+    `Starting Diff-and-Patch Sync from course ${updateCourseId} to ${liveCourseId}`
+  );
+  const allCloudFilesToDelete = [];
+  const updateCurriculumRaw =
+    await sectionRepository.findAllSectionsWithDetails(
+      updateCourseId,
+      transaction
+    );
+  const liveCurriculumRaw = await sectionRepository.findAllSectionsWithDetails(
+    liveCourseId,
+    transaction
+  );
+  const updateCurriculum = toCamelCaseObject(updateCurriculumRaw);
+  const liveCurriculum = toCamelCaseObject(
+    liveCurriculumRaw.filter((s) => !s.isArchived)
+  );
+  const updateSectionsMap = new Map(
+    updateCurriculum.map((s) => [s.originalId, s])
+  );
+  const liveSectionsMapById = new Map(
+    liveCurriculum.map((s) => [s.sectionId, s])
+  );
+  const sectionsToArchiveIds = [];
+  for (const [liveSectionId] of liveSectionsMapById.entries()) {
+    if (!updateSectionsMap.has(liveSectionId)) {
+      sectionsToArchiveIds.push(liveSectionId);
+    }
+  }
+  if (sectionsToArchiveIds.length > 0) {
+    await sectionRepository.archiveSectionsByIds(
+      sectionsToArchiveIds,
+      transaction
+    );
+  }
+  for (const updateSection of updateCurriculum) {
+    const originalSectionId = updateSection.originalId;
+    if (originalSectionId && liveSectionsMapById.has(originalSectionId)) {
+      await sectionRepository.updateSectionById(
+        originalSectionId,
+        toPascalCaseObject(updateSection),
+        transaction
+      );
+      const filesFromLessons = await syncLessonsForSection(
+        updateSection.lessons || [],
+        originalSectionId,
+        transaction
+      );
+      allCloudFilesToDelete.push(...filesFromLessons);
+    } else {
+      await cloneFullLesson(updateSection, liveCourseId, transaction);
+    }
+  }
+  const updateCourseDataRaw = await courseRepository.findCourseById(
+    updateCourseId,
+    true,
+    transaction
+  );
+  const updateCourseData = toCamelCaseObject(updateCourseDataRaw);
+  await courseRepository.updateCourseById(
+    liveCourseId,
+    toPascalCaseObject({
+      courseName: updateCourseData.courseName,
+      shortDescription: updateCourseData.shortDescription,
+      fullDescription: updateCourseData.fullDescription,
+      requirements: updateCourseData.requirements,
+      learningOutcomes: updateCourseData.learningOutcomes,
+      originalPrice: updateCourseData.originalPrice,
+      discountedPrice: updateCourseData.discountedPrice,
+      categoryId: updateCourseData.categoryId,
+      levelId: updateCourseData.levelId,
+      language: updateCourseData.language,
+    }),
+    transaction
+  );
+  logger.info(`Synced course-level details to live course ${liveCourseId}`);
+  return allCloudFilesToDelete;
+}
+
+/**
  * Admin phê duyệt hoặc từ chối khóa học.
- * @param {number} requestId - ID của CourseApprovalRequests.
- * @param {string} decision - 'APPROVED' hoặc 'REJECTED' hoặc 'NEEDS_REVISION'.
- * @param {object} user - Admin thực hiện.
- * @param {string} [adminNotes] - Ghi chú của admin.
- * @returns {Promise<object>} - Yêu cầu duyệt đã cập nhật.
  */
 const reviewCourseApproval = async (
   requestId,
@@ -882,83 +1061,116 @@ const reviewCourseApproval = async (
   user,
   adminNotes = null
 ) => {
-  console.log('Review course approval:', requestId, decision, user, adminNotes);
+  let updatedRequest;
+  const cloudFilesToDeleteAfterCommit = [];
   const approvalRequest =
     await courseRepository.findCourseApprovalRequestById(requestId);
-
   if (!approvalRequest) {
     throw new ApiError(
       httpStatus.NOT_FOUND,
       'Không tìm thấy yêu cầu duyệt hoặc yêu cầu đã được xử lý.'
     );
   }
-  console.log('Approval request:', approvalRequest); // Debug log
   if (approvalRequest.Status !== ApprovalStatus.PENDING) {
     throw new ApiError(httpStatus.BAD_REQUEST, 'Yêu cầu này đã được xử lý.');
   }
-
   const courseId = approvalRequest.CourseID;
   let newCourseStatus;
-  let publishedAt = null;
-
-  if (decision === ApprovalStatus.APPROVED) {
-    newCourseStatus = CourseStatus.PUBLISHED;
-    publishedAt = new Date();
-  } else if (decision === ApprovalStatus.REJECTED) {
-    newCourseStatus = CourseStatus.REJECTED;
-  } else if (decision === ApprovalStatus.NEEDS_REVISION) {
-    newCourseStatus = CourseStatus.REJECTED;
-  } else {
-    throw new ApiError(httpStatus.BAD_REQUEST, 'Quyết định không hợp lệ.');
-  }
-
-  // Bắt đầu transaction
+  const publishedAt = null;
+  let courseData;
   const pool = await getConnection();
   const transaction = new sql.Transaction(pool);
   try {
     await transaction.begin();
-
-    // 1. Cập nhật trạng thái CourseApprovalRequest
-    const updatedRequest = await courseRepository.updateApprovalRequestStatus(
-      requestId,
-      {
-        status: decision,
-        adminId: user.id,
-        adminNotes,
-      },
-      transaction
-    );
-
-    // 2. Cập nhật trạng thái Course và PublishedAt (nếu approved)
-    const courseUpdateData = { StatusID: newCourseStatus };
-    if (publishedAt) {
-      courseUpdateData.PublishedAt = publishedAt;
+    if (
+      decision === ApprovalStatus.APPROVED &&
+      approvalRequest.RequestType === ApprovalRequestType.UPDATE_SUBMISSION
+    ) {
+      const updateCourseId = approvalRequest.CourseID;
+      const liveCourse = await courseRepository.findCourseById(
+        updateCourseId,
+        true,
+        transaction
+      );
+      const liveCourseId = liveCourse.LiveCourseID;
+      if (!liveCourseId) {
+        throw new ApiError(
+          httpStatus.INTERNAL_SERVER_ERROR,
+          'Cannot find live course to apply update.'
+        );
+      }
+      const filesFromSync = await syncLiveCourseFromUpdate(
+        updateCourseId,
+        liveCourseId,
+        transaction
+      );
+      cloudFilesToDeleteAfterCommit.push(...filesFromSync);
+      logger.info(
+        `Sync complete. Deleting update draft course ${updateCourseId} from database.`
+      );
+      updatedRequest = await courseRepository.updateApprovalRequestStatus(
+        requestId,
+        {
+          status: decision,
+          adminId: user.id,
+          adminNotes,
+        },
+        transaction
+      );
+      courseData = await courseRepository.findCourseById(courseId);
+      await courseRepository.deleteCourseById(updateCourseId, transaction);
+      logger.info(
+        `Update from course ${updateCourseId} successfully synced and applied to live course ${liveCourseId}.`
+      );
+    } else {
+      if (decision === ApprovalStatus.REJECTED) {
+        newCourseStatus = CourseStatus.REJECTED;
+      } else if (decision === ApprovalStatus.NEEDS_REVISION) {
+        newCourseStatus = CourseStatus.REJECTED;
+      } else if (
+        decision === ApprovalStatus.APPROVED &&
+        approvalRequest.RequestType === ApprovalRequestType.INITIAL_SUBMISSION
+      ) {
+        newCourseStatus = CourseStatus.PUBLISHED;
+      } else {
+        throw new ApiError(httpStatus.BAD_REQUEST, 'Quyết định không hợp lệ.');
+      }
+      courseData = await courseRepository.findCourseById(courseId);
+      updatedRequest = await courseRepository.updateApprovalRequestStatus(
+        requestId,
+        {
+          status: decision,
+          adminId: user.id,
+          adminNotes,
+        },
+        transaction
+      );
+      const courseUpdateData = { StatusID: newCourseStatus };
+      if (publishedAt) {
+        courseUpdateData.PublishedAt = publishedAt;
+      }
+      await courseRepository.updateCourseById(
+        courseId,
+        courseUpdateData,
+        transaction
+      );
     }
-    await courseRepository.updateCourseById(
-      courseId,
-      courseUpdateData,
-      transaction
-    );
-
     await transaction.commit();
-
     try {
-      const course = await courseRepository.findCourseById(courseId); // Lấy lại tên khóa học
       const instructorId = approvalRequest.InstructorID;
       let notifyMessage = '';
       let notifyType = '';
       if (decision === ApprovalStatus.APPROVED) {
         notifyMessage = `Khóa học "${
-          course?.CourseName || 'của bạn'
+          courseData?.CourseName || 'của bạn'
         }" đã được phê duyệt và xuất bản!`;
         notifyType = 'COURSE_APPROVED';
       } else if (decision === ApprovalStatus.REJECTED) {
         notifyMessage = `Khóa học "${
-          course?.CourseName || 'của bạn'
+          courseData?.CourseName || 'của bạn'
         }" đã bị từ chối.${adminNotes ? ` Lý do: ${adminNotes}` : ''}`;
         notifyType = 'COURSE_REJECTED';
       }
-
       if (notifyType) {
         await notificationService.createNotification(
           instructorId,
@@ -973,7 +1185,22 @@ const reviewCourseApproval = async (
         notifyError
       );
     }
-    return updatedRequest;
+    for (const file of cloudFilesToDeleteAfterCommit) {
+      try {
+        await cloudinaryUtil.deleteAsset(file.publicId, {
+          resource_type: file.resourceType || 'raw',
+        });
+        logger.info(
+          `Deleted cloud file ${file.publicId} of type ${file.resourceType}`
+        );
+      } catch (deleteError) {
+        logger.error(
+          `Failed to delete cloud file ${file.publicId}:`,
+          deleteError
+        );
+      }
+    }
+    return toCamelCaseObject(updatedRequest);
   } catch (error) {
     logger.error(`Error reviewing approval request ${requestId}:`, error);
     await transaction.rollback();
@@ -986,25 +1213,18 @@ const reviewCourseApproval = async (
 
 /**
  * Admin đánh dấu/bỏ đánh dấu khóa học nổi bật.
- * @param {number} courseId
- * @param {boolean} isFeatured
- * @param {object} user - Admin thực hiện.
- * @returns {Promise<object>} - Khóa học đã cập nhật.
  */
 const toggleCourseFeature = async (courseId, isFeatured, user) => {
-  // Chỉ Admin/SuperAdmin mới được làm việc này (đã check ở route)
   const course = await courseRepository.findCourseById(courseId, true);
   if (!course) {
     throw new ApiError(httpStatus.NOT_FOUND, 'Không tìm thấy khóa học.');
   }
-
   if (isFeatured && course.StatusID !== CourseStatus.PUBLISHED) {
     throw new ApiError(
       httpStatus.BAD_REQUEST,
       'Chỉ có thể đánh dấu nổi bật cho khóa học đã xuất bản.'
     );
   }
-
   const updatedCourse = await courseRepository.updateCourseById(courseId, {
     IsFeatured: isFeatured,
   });
@@ -1019,30 +1239,9 @@ const toggleCourseFeature = async (courseId, isFeatured, user) => {
   );
   return updatedCourse;
 };
-// /**
-//  * So sánh hai object đơn giản (chỉ các trường primitive).
-//  * @param {object} objA
-//  * @param {object} objB
-//  * @param {string[]} keysToCompare - Mảng các key cần so sánh.
-//  * @returns {boolean} - True nếu khác nhau, False nếu giống nhau.
-//  */
-// const hasPrimitiveChanges = (objA, objB, keysToCompare) => {
-//   if (!objA || !objB) return true;
-//   for (const key of keysToCompare) {
-//     const valA = objA[key] ?? null;
-//     const valB = objB[key] ?? null;
-//     if (valA !== valB) {
-//       return true;
-//     }
-//   }
-//   return false;
-// };
 
 /**
  * Admin: Lấy danh sách các yêu cầu phê duyệt khóa học.
- * @param {object} filters - { status, instructorId, courseId }
- * @param {object} options - { page, limit, sortBy }
- * @returns {Promise<object>} - { requests, total, page, limit, totalPages }
  */
 const getApprovalRequests = async (filters = {}, options = {}) => {
   const { page = 1, limit = 10, sortBy } = options;
@@ -1062,8 +1261,6 @@ const getApprovalRequests = async (filters = {}, options = {}) => {
 
 /**
  * Admin: Lấy chi tiết một yêu cầu phê duyệt.
- * @param {number} requestId
- * @returns {Promise<object>}
  */
 const getApprovalRequestDetails = async (requestId) => {
   const requestDetails =
@@ -1074,10 +1271,12 @@ const getApprovalRequestDetails = async (requestId) => {
       'Không tìm thấy yêu cầu phê duyệt.'
     );
   }
-
   return toCamelCaseObject(requestDetails);
 };
 
+/**
+ * Lấy tất cả trạng thái khóa học.
+ */
 const getCourseStatuses = async () => {
   const statuses = await courseRepository.getAllCourseStatuses();
   return toCamelCaseObject(statuses);
@@ -1085,10 +1284,6 @@ const getCourseStatuses = async () => {
 
 /**
  * Query for courses by category slug with pagination and filtering.
- * @param {string} categorySlug
- * @param {object} filterOptions - Options for filtering courses.
- * @param {object} paginationOptions - Options for pagination and sorting.
- * @returns {Promise<QueryResult>}
  */
 const queryCoursesByCategorySlug = async (
   categorySlug,
@@ -1096,20 +1291,15 @@ const queryCoursesByCategorySlug = async (
   paginationOptions,
   targetCurrency = 'USD'
 ) => {
-  // 1. Tìm CategoryID từ categorySlug
   const category = await categoryRepository.findCategoryBySlug(categorySlug);
   if (!category) {
     throw new ApiError(httpStatus.NOT_FOUND, 'Category not found');
   }
-
-  // 2. Thêm categoryId vào filterOptions
   const combinedFilterOptions = {
     ...filterOptions,
     categoryId: category.CategoryID,
     statusId: CourseStatus.PUBLISHED,
   };
-
-  // 3. Gọi hàm queryCourses hiện có (hoặc một hàm tương tự)
   const courses = await courseRepository.findAllCourses(
     combinedFilterOptions,
     paginationOptions
@@ -1125,11 +1315,6 @@ const queryCoursesByCategorySlug = async (
 
 /**
  * Query for courses by instructor ID with pagination and filtering.
- * @param {number|string} instructorId
- * @param {object} filterOptions - Options for filtering courses.
- * @param {object} paginationOptions - Options for pagination and sorting.
- * @param {object|null} currentUser - Thông tin người dùng hiện tại (nếu có)
- * @returns {Promise<QueryResult>}
  */
 const queryCoursesByInstructor = async (
   instructorId,
@@ -1138,9 +1323,7 @@ const queryCoursesByInstructor = async (
   currentUser = null,
   targetCurrency = 'USD'
 ) => {
-  // 1. Kiểm tra xem instructorId có tồn tại và có phải là giảng viên không
   const instructor = await userRepository.findUserById(instructorId);
-  console.log(`Checking instructor with ID ${instructorId}:`, instructor);
   if (
     !instructor ||
     (instructor.RoleID !== Roles.INSTRUCTOR &&
@@ -1148,8 +1331,6 @@ const queryCoursesByInstructor = async (
   ) {
     throw new ApiError(httpStatus.NOT_FOUND, 'Instructor not found');
   }
-
-  // 2. Xử lý quyền xem trạng thái khóa học
   let canViewNonPublished = false;
   if (currentUser) {
     if (
@@ -1159,20 +1340,17 @@ const queryCoursesByInstructor = async (
       canViewNonPublished = true;
     }
   }
-
   let effectiveStatusId = filterOptions.statusId;
   if (!filterOptions.statusId && !canViewNonPublished) {
     effectiveStatusId = CourseStatus.PUBLISHED;
   } else if (!filterOptions.statusId && canViewNonPublished) {
     effectiveStatusId = null;
   }
-
   const combinedFilterOptions = {
     ...filterOptions,
     instructorId: parseInt(instructorId, 10),
     statusId: effectiveStatusId,
   };
-
   const coursesResult = await courseRepository.findAllCourses(
     combinedFilterOptions,
     paginationOptions
@@ -1192,23 +1370,148 @@ const queryCoursesByInstructor = async (
   };
 };
 
+/**
+ * Hủy một phiên cập nhật và khôi phục trạng thái của khóa học gốc.
+ */
+const cancelUpdate = async (updateCourseId, user) => {
+  const draftCourse = await courseRepository.findCourseById(
+    updateCourseId,
+    true
+  );
+  if (!draftCourse || !draftCourse.LiveCourseID) {
+    throw new ApiError(
+      httpStatus.NOT_FOUND,
+      'Không tìm thấy phiên bản cập nhật hợp lệ.'
+    );
+  }
+  const liveCourseId = draftCourse.LiveCourseID;
+  const originalCourse = await courseRepository.findCourseById(
+    liveCourseId,
+    true
+  );
+  if (!originalCourse || originalCourse.InstructorID !== user.id) {
+    throw new ApiError(
+      httpStatus.FORBIDDEN,
+      'Bạn không có quyền thực hiện hành động này.'
+    );
+  }
+  const pool = await getConnection();
+  const transaction = new sql.Transaction(pool);
+  try {
+    await transaction.begin();
+    await courseRepository.updateCourseById(
+      liveCourseId,
+      { StatusID: CourseStatus.PUBLISHED },
+      transaction
+    );
+    await courseRepository.deleteCourseById(updateCourseId, transaction);
+    await transaction.commit();
+    return { originalCourseSlug: originalCourse.Slug };
+  } catch (error) {
+    await transaction.rollback();
+    logger.error(
+      `Error cancelling update session for draft course ${updateCourseId}:`,
+      error
+    );
+    throw new ApiError(
+      httpStatus.INTERNAL_SERVER_ERROR,
+      'Hủy phiên cập nhật thất bại.'
+    );
+  }
+};
+
+/**
+ * Tạo một phiên cập nhật (bản sao) cho một khóa học đã xuất bản.
+ */
+const createUpdateSession = async (courseId, user) => {
+  const originalCourse = await courseRepository.findCourseById(courseId, true);
+  if (!originalCourse) {
+    throw new ApiError(httpStatus.NOT_FOUND, 'Không tìm thấy khóa học gốc.');
+  }
+  if (originalCourse.InstructorID !== user.id) {
+    throw new ApiError(
+      httpStatus.FORBIDDEN,
+      'Bạn không phải là giảng viên của khóa học này.'
+    );
+  }
+  if (originalCourse.StatusID !== CourseStatus.PUBLISHED) {
+    throw new ApiError(
+      httpStatus.BAD_REQUEST,
+      'Chỉ có thể tạo phiên cập nhật cho khóa học đã xuất bản.'
+    );
+  }
+  const existingDraft =
+    await courseRepository.findExistingUpdateDraft(courseId);
+  if (existingDraft) {
+    logger.warn(
+      `Found an existing update draft (ID: ${existingDraft.CourseID}) for live course ${courseId}. Automatically cancelling it.`
+    );
+    try {
+      await cancelUpdate(existingDraft.CourseID, user);
+    } catch (cancelError) {
+      logger.error(
+        `Failed to automatically cancel old update session ${existingDraft.CourseID}. Please try again.`,
+        cancelError
+      );
+      throw new ApiError(
+        httpStatus.INTERNAL_SERVER_ERROR,
+        'Không thể dọn dẹp phiên cập nhật cũ. Vui lòng thử lại.'
+      );
+    }
+  }
+  const pool = await getConnection();
+  const transaction = new sql.Transaction(pool);
+  try {
+    await transaction.begin();
+    const newDraftCourse = await courseRepository.cloneCourseRecord(
+      courseId,
+      {
+        StatusID: CourseStatus.DRAFT,
+        LiveCourseID: courseId,
+      },
+      transaction
+    );
+    await courseRepository.cloneCurriculum(
+      courseId,
+      newDraftCourse.CourseID,
+      transaction
+    );
+    await transaction.commit();
+    const fullNewDraft = await courseRepository.findCourseWithFullDetailsById(
+      newDraftCourse.CourseID,
+      true
+    );
+    return toCamelCaseObject(fullNewDraft);
+  } catch (error) {
+    await transaction.rollback();
+    logger.error(
+      `Error creating update session for course ${courseId}:`,
+      error
+    );
+    throw new ApiError(
+      httpStatus.INTERNAL_SERVER_ERROR,
+      'Tạo phiên cập nhật thất bại.'
+    );
+  }
+};
+
 module.exports = {
   createCourse,
   getCourses,
   getCourseBySlug,
   updateCourse,
   deleteCourse,
-
   updateCourseThumbnail,
   updateCourseIntroVideo,
   submitCourseForApproval,
   reviewCourseApproval,
   getApprovalRequests,
   getApprovalRequestDetails,
-
   toggleCourseFeature,
-
+  getPendingApprovalRequestByCourseId,
   getCourseStatuses,
   queryCoursesByCategorySlug,
   queryCoursesByInstructor,
+  createUpdateSession,
+  cancelUpdate,
 };

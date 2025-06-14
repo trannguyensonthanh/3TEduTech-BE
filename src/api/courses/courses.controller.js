@@ -234,6 +234,44 @@ const getCoursesByInstructorId = catchAsync(async (req, res) => {
   res.status(httpStatus.OK).send(result);
 });
 
+/**
+ * Lấy yêu cầu duyệt khóa học đang chờ xử lý (PENDING) theo CourseID
+ */
+const getPendingApprovalRequestByCourseId = catchAsync(async (req, res) => {
+  const { courseId } = req.params;
+  const request =
+    await courseService.getPendingApprovalRequestByCourseId(courseId);
+  if (!request) {
+    return res
+      .status(httpStatus.NOT_FOUND)
+      .send({ message: 'Không tìm thấy yêu cầu duyệt đang chờ xử lý.' });
+  }
+  res.status(httpStatus.OK).send(request);
+});
+
+const createUpdateSession = catchAsync(async (req, res) => {
+  const updatedCourse = await courseService.createUpdateSession(
+    req.params.courseId,
+    req.user
+  );
+  res.status(httpStatus.CREATED).send({
+    message: 'Update session created. You are now editing a new version.',
+    updateCourse: updatedCourse,
+  });
+});
+
+const cancelUpdate = catchAsync(async (req, res) => {
+  // Lưu ý: param ở đây là ID của khóa học BẢN SAO, không phải bản gốc
+  const result = await courseService.cancelUpdate(
+    req.params.updateCourseId,
+    req.user
+  );
+  res.status(httpStatus.OK).send({
+    message: 'Update session cancelled. The original course is now active.',
+    originalCourseSlug: result.originalCourseSlug,
+  });
+});
+
 module.exports = {
   createCourse,
   updateCourse,
@@ -244,7 +282,7 @@ module.exports = {
 
   reviewCourseApproval,
   toggleCourseFeature,
-
+  getPendingApprovalRequestByCourseId,
   getCourses,
   getCourse,
   updateCourseThumbnail,
@@ -252,4 +290,6 @@ module.exports = {
   getCourseStatuses,
   getCoursesByCategorySlug,
   getCoursesByInstructorId,
+  createUpdateSession,
+  cancelUpdate,
 };

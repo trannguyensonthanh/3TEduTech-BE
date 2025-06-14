@@ -212,7 +212,7 @@ const findLessonsBySectionId = async (sectionId) => {
               VideoSourceType, ExternalVideoID, ThumbnailUrl, VideoDurationSeconds,
               TextContent, IsFreePreview, OriginalID, CreatedAt, UpdatedAt
           FROM Lessons
-          WHERE SectionID = @SectionID
+          WHERE SectionID = @SectionID AND IsArchived = 0
           ORDER BY LessonOrder ASC;
       `);
     return result.recordset;
@@ -453,22 +453,27 @@ const findAllLessonsWithDetailsBySectionIds = async (
 
   try {
     const lessonsResult = await executor.query(`
-          SELECT * FROM Lessons WHERE SectionID IN (${sectionIdPlaceholders}) ORDER BY SectionID, LessonOrder ASC;
+          SELECT * FROM Lessons WHERE SectionID IN (${sectionIdPlaceholders}) AND IsArchived = 0 ORDER BY SectionID, LessonOrder ASC;
       `);
     const lessons = lessonsResult.recordset;
     if (lessons.length === 0) return [];
 
     const lessonIds = lessons.map((l) => l.LessonID);
 
-    const [questionsWithOptions, attachments, subtitles] = await Promise.all([
-      quizRepository.findAllQuestionsWithOptionsByLessonIds(
+    const questionsWithOptions =
+      await quizRepository.findAllQuestionsWithOptionsByLessonIds(
         lessonIds,
         true,
         transaction
-      ),
-      attachmentRepository.findAttachmentsByLessonIds(lessonIds, transaction),
-      subtitleRepository.findSubtitlesByLessonIds(lessonIds, transaction),
-    ]);
+      );
+    const attachments = await attachmentRepository.findAttachmentsByLessonIds(
+      lessonIds,
+      transaction
+    );
+    const subtitles = await subtitleRepository.findSubtitlesByLessonIds(
+      lessonIds,
+      transaction
+    );
 
     const questionsMap = new Map();
     questionsWithOptions.forEach((q) => {
@@ -516,6 +521,29 @@ const findAllLessonsWithDetailsBySectionIds = async (
   }
 };
 
+/**
+ * Đánh dấu một mảng các lesson là đã lưu trữ (IsArchived = 1).
+ * @param {number[]} lessonIds - Mảng các LessonID.
+ * @param {object} transaction
+ * @returns {Promise<number>} - Số lượng dòng bị ảnh hưởng.
+ */
+const archiveLessonsByIds = async (lessonIds, transaction) => {
+  if (!lessonIds || lessonIds.length === 0) return 0;
+  const request = transaction.request();
+  const idPlaceholders = lessonIds
+    .map((_, index) => `@id_les_arc_${index}`)
+    .join(',');
+  lessonIds.forEach((id, index) =>
+    request.input(`id_les_arc_${index}`, sql.BigInt, id)
+  );
+
+  const result = await request.query(`
+    UPDATE Lessons SET IsArchived = 1, UpdatedAt = GETDATE()
+    WHERE LessonID IN (${idPlaceholders});
+  `);
+  return result.rowsAffected[0];
+};
+
 module.exports = {
   getMaxLessonOrder,
   createLesson,
@@ -526,4 +554,5 @@ module.exports = {
   updateLessonById,
   deleteLessonById,
   updateLessonsOrder,
+  archiveLessonsByIds,
 };

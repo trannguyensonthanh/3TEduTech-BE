@@ -167,13 +167,13 @@ const getTopPerformingCourses = async () => {
         SELECT TOP 5
             c.CourseID,
             c.CourseName,
-            SUM(oi.PriceAtOrder) as TotalRevenue
+            SUM(oi.PriceAtOrder) as TotalRevenue,
             c.Slug
         FROM OrderItems oi
         JOIN Courses c ON oi.CourseID = c.CourseID
         JOIN Orders o ON oi.OrderID = o.OrderID
         WHERE o.OrderStatus = @CompletedStatus
-        GROUP BY c.CourseID, c.CourseName
+        GROUP BY c.CourseID, c.CourseName, c.Slug
         ORDER BY TotalRevenue DESC;
     `;
 

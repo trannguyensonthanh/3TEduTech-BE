@@ -5,6 +5,7 @@ const { getConnection, sql } = require('../../database/connection');
 const logger = require('../../utils/logger');
 const CourseStatus = require('../../core/enums/CourseStatus');
 const sectionRepository = require('../sections/sections.repository');
+const { toPascalCaseObject } = require('../../utils/caseConverter');
 
 /**
  * Tạo khóa học mới (thường là bản nháp).
@@ -64,6 +65,9 @@ const findCourseById = async (courseId, includeDraft = false) => {
   try {
     const pool = await getConnection();
     const request = pool.request();
+    console.log(
+      `Finding course by ID: ${courseId}, includeDraft: ${includeDraft}`
+    );
     request.input('CourseID', sql.BigInt, courseId);
 
     let query = `
@@ -299,13 +303,15 @@ const updateCourseById = async (courseId, updateData, transaction = null) => {
     : (await getConnection()).request();
   executor.input('CourseID', sql.BigInt, courseId);
   executor.input('UpdatedAt', sql.DateTime2, new Date());
-
+  console.log(`Updating course ${courseId} with data:`, updateData);
   const setClauses = ['UpdatedAt = @UpdatedAt'];
+  const pascalUpdateData = toPascalCaseObject(updateData);
+  const keys = Object.keys(pascalUpdateData);
 
-  const keys = Object.keys(updateData);
   keys.forEach((key) => {
     if (key !== 'CourseID' && key !== 'InstructorID' && key !== 'CreatedAt') {
-      const value = updateData[key];
+      const value = pascalUpdateData[key];
+      logger.info(`Updating ${key} to ${value}`);
       let sqlType;
       if (
         [
@@ -356,13 +362,19 @@ const updateCourseById = async (courseId, updateData, transaction = null) => {
 /**
  * Xóa khóa học bằng ID (Cân nhắc xóa mềm).
  */
-const deleteCourseById = async (courseId) => {
+const deleteCourseById = async (courseId, transaction = null) => {
   try {
-    const pool = await getConnection();
-    const request = pool.request();
-    request.input('CourseID', sql.BigInt, courseId);
-    const result = await request.query(
+    const executor = transaction
+      ? transaction.request()
+      : (await getConnection()).request();
+    executor.input('CourseID', sql.BigInt, courseId);
+    console.log(`Deleting course with CourseID: ${courseId}`);
+    const result = await executor.query(
       'DELETE FROM Courses WHERE CourseID = @CourseID'
+    );
+    console.log(
+      `Rows affected when deleting course ${courseId}:`,
+      result.rowsAffected[0]
     );
     return result.rowsAffected[0];
   } catch (error) {
@@ -734,6 +746,344 @@ const getAllCourseStatuses = async () => {
   }
 };
 
+/**
+ * Tìm một khóa học cập nhật đang chờ xử lý (draft) cho một khóa học gốc (live).
+ * @param {number} liveCourseId - ID của khóa học gốc (đã published).
+ * @returns {Promise<object|null>} - Khóa học bản sao hoặc null.
+ */
+const findExistingUpdateDraft = async (liveCourseId) => {
+  try {
+    const pool = await getConnection();
+    const request = pool.request();
+    request.input('LiveCourseID', sql.BigInt, liveCourseId);
+
+    // Tìm khóa học có LiveCourseID trỏ đến khóa học gốc và không phải là ARCHIVED
+    const result = await request.query(`
+      SELECT * FROM Courses 
+      WHERE LiveCourseID = @LiveCourseID AND StatusID != 'ARCHIVED';
+    `);
+    return result.recordset[0] || null;
+  } catch (error) {
+    logger.error(
+      `Error finding existing update draft for live course ${liveCourseId}:`,
+      error
+    );
+    throw error;
+  }
+};
+
+/**
+ * Clone một khóa học (không bao gồm sections/lessons).
+ * @param {number} originalCourseId - ID khóa học gốc.
+ * @param {object} overrides - Các giá trị cần ghi đè (vd: StatusID, LiveCourseID).
+ * @param {object} transaction
+ * @returns {Promise<object>} - Khóa học bản sao đã tạo.
+ */
+const cloneCourseRecord = async (originalCourseId, overrides, transaction) => {
+  const request = transaction.request();
+  request.input('OriginalCourseID', sql.BigInt, originalCourseId);
+
+  // Ghi đè các giá trị cần thiết
+  Object.entries(overrides).forEach(([key, value]) => {
+    // Xác định kiểu dữ liệu (cần làm chi tiết hơn nếu có nhiều kiểu)
+    let sqlType = sql.NVarChar;
+    if (key === 'LiveCourseID') sqlType = sql.BigInt;
+    if (key === 'StatusID') sqlType = sql.VarChar;
+    request.input(key, sqlType, value);
+  });
+
+  const overrideKeys = Object.keys(overrides);
+  const overrideColumns = overrideKeys.join(', ');
+  const overrideValues = overrideKeys.map((key) => `@${key}`).join(', ');
+
+  const query = `
+    INSERT INTO Courses (
+        CourseName, Slug, ShortDescription, FullDescription, Requirements, LearningOutcomes,
+        ThumbnailUrl, IntroVideoUrl, OriginalPrice, DiscountedPrice, InstructorID,
+        CategoryID, LevelID, Language, IsFeatured, ThumbnailPublicId, IntroVideoPublicId,
+        ${overrideColumns}
+    )
+    OUTPUT Inserted.*
+    SELECT
+        CourseName, 
+        CONCAT(Slug, '-update-', LOWER(SUBSTRING(CONVERT(varchar(40), NEWID()), 1, 8))), -- Tạo slug mới duy nhất
+        ShortDescription, FullDescription, Requirements, LearningOutcomes,
+        ThumbnailUrl, IntroVideoUrl, OriginalPrice, DiscountedPrice, InstructorID,
+        CategoryID, LevelID, Language, IsFeatured, ThumbnailPublicId, IntroVideoPublicId,
+        ${overrideValues}
+    FROM Courses
+    WHERE CourseID = @OriginalCourseID;
+  `;
+
+  try {
+    const result = await request.query(query);
+    return result.recordset[0];
+  } catch (error) {
+    logger.error(`Error cloning course record for ${originalCourseId}:`, error);
+    throw error;
+  }
+};
+
+/**
+ * Clone tất cả sections và các thành phần con từ khóa học này sang khóa học khác.
+ * Chỉ clone những mục có IsArchived = 0.
+ * @param {number} fromCourseId - ID khóa học gốc.
+ * @param {number} toCourseId - ID khóa học bản sao.
+ * @param {object} transaction - DB Transaction đang hoạt động.
+ * @returns {Promise<void>}
+ */
+const cloneCurriculum = async (fromCourseId, toCourseId, transaction) => {
+  // 1. Lấy tất cả sections hợp lệ của khóa học gốc
+  const getSectionsRequest = transaction.request();
+  getSectionsRequest.input('FromCourseID', sql.BigInt, fromCourseId);
+  const sectionsResult = await getSectionsRequest.query(`
+        SELECT SectionID, SectionName, SectionOrder, Description 
+        FROM Sections 
+        WHERE CourseID = @FromCourseID AND IsArchived = 0
+        ORDER BY SectionOrder ASC;
+    `);
+
+  // Lặp qua từng section để clone
+  for (const section of sectionsResult.recordset) {
+    // 2. TẠO SECTION MỚI
+    const insertSectionRequest = transaction.request();
+    insertSectionRequest.input('ToCourseID', sql.BigInt, toCourseId);
+    insertSectionRequest.input(
+      'SectionName',
+      sql.NVarChar,
+      section.SectionName
+    );
+    insertSectionRequest.input('SectionOrder', sql.Int, section.SectionOrder);
+    insertSectionRequest.input(
+      'Description',
+      sql.NVarChar,
+      section.Description
+    );
+    insertSectionRequest.input('OriginalID', sql.BigInt, section.SectionID); // Lưu ID gốc
+
+    const newSectionResult = await insertSectionRequest.query(`
+            INSERT INTO Sections (CourseID, SectionName, SectionOrder, Description, OriginalID)
+            OUTPUT Inserted.SectionID
+            VALUES (@ToCourseID, @SectionName, @SectionOrder, @Description, @OriginalID);
+        `);
+    const newSectionId = newSectionResult.recordset[0].SectionID;
+
+    // 3. LẤY TẤT CẢ LESSONS HỢP LỆ CỦA SECTION GỐC
+    const getLessonsRequest = transaction.request();
+    getLessonsRequest.input('OriginalSectionID', sql.BigInt, section.SectionID);
+    const lessonsResult = await getLessonsRequest.query(`
+            SELECT * FROM Lessons WHERE SectionID = @OriginalSectionID AND IsArchived = 0;
+        `);
+
+    // Lặp qua từng lesson để clone
+    for (const lesson of lessonsResult.recordset) {
+      // 4. TẠO LESSON MỚI
+      const insertLessonRequest = transaction.request();
+      // Map tất cả các cột từ lesson cũ sang lesson mới
+      insertLessonRequest.input('NewSectionID', sql.BigInt, newSectionId);
+      insertLessonRequest.input('LessonName', sql.NVarChar, lesson.LessonName);
+      insertLessonRequest.input(
+        'Description',
+        sql.NVarChar,
+        lesson.Description
+      );
+      insertLessonRequest.input('LessonOrder', sql.Int, lesson.LessonOrder);
+      insertLessonRequest.input('LessonType', sql.VarChar, lesson.LessonType);
+      insertLessonRequest.input(
+        'ExternalVideoID',
+        sql.VarChar,
+        lesson.ExternalVideoID
+      );
+      insertLessonRequest.input(
+        'ThumbnailUrl',
+        sql.VarChar,
+        lesson.ThumbnailUrl
+      );
+      insertLessonRequest.input(
+        'VideoDurationSeconds',
+        sql.Int,
+        lesson.VideoDurationSeconds
+      );
+      insertLessonRequest.input(
+        'TextContent',
+        sql.NVarChar,
+        lesson.TextContent
+      );
+      insertLessonRequest.input('IsFreePreview', sql.Bit, lesson.IsFreePreview);
+      insertLessonRequest.input(
+        'VideoSourceType',
+        sql.VarChar,
+        lesson.VideoSourceType
+      );
+      insertLessonRequest.input('OriginalID', sql.BigInt, lesson.LessonID); // Lưu ID gốc
+
+      const newLessonResult = await insertLessonRequest.query(`
+                INSERT INTO Lessons (
+                    SectionID, LessonName, Description, LessonOrder, LessonType, 
+                    ExternalVideoID, ThumbnailUrl, VideoDurationSeconds, TextContent, 
+                    IsFreePreview, VideoSourceType, OriginalID
+                )
+                OUTPUT Inserted.LessonID
+                VALUES (
+                    @NewSectionID, @LessonName, @Description, @LessonOrder, @LessonType,
+                    @ExternalVideoID, @ThumbnailUrl, @VideoDurationSeconds, @TextContent,
+                    @IsFreePreview, @VideoSourceType, @OriginalID
+                );
+            `);
+      const newLessonId = newLessonResult.recordset[0].LessonID;
+
+      // 5. CLONE CÁC THÀNH PHẦN CON CỦA LESSON
+
+      // 5.1. CLONE QUIZ QUESTIONS & OPTIONS
+      if (lesson.LessonType === 'QUIZ') {
+        const getQuestionsRequest = transaction.request();
+        getQuestionsRequest.input(
+          'OriginalLessonID_Q',
+          sql.BigInt,
+          lesson.LessonID
+        );
+        const questionsResult = await getQuestionsRequest.query(`
+                    SELECT * FROM QuizQuestions WHERE LessonID = @OriginalLessonID_Q;
+                `);
+
+        for (const question of questionsResult.recordset) {
+          const insertQuestionRequest = transaction.request();
+          insertQuestionRequest.input('NewLessonID_Q', sql.BigInt, newLessonId);
+          insertQuestionRequest.input(
+            'QuestionText',
+            sql.NVarChar,
+            question.QuestionText
+          );
+          insertQuestionRequest.input(
+            'Explanation',
+            sql.NVarChar,
+            question.Explanation
+          );
+          insertQuestionRequest.input(
+            'QuestionOrder',
+            sql.Int,
+            question.QuestionOrder
+          );
+          const newQuestionResult = await insertQuestionRequest.query(`
+                        INSERT INTO QuizQuestions (LessonID, QuestionText, Explanation, QuestionOrder)
+                        OUTPUT Inserted.QuestionID
+                        VALUES (@NewLessonID_Q, @QuestionText, @Explanation, @QuestionOrder);
+                    `);
+          const newQuestionId = newQuestionResult.recordset[0].QuestionID;
+
+          // Clone options for this question
+          const getOptionsRequest = transaction.request();
+          getOptionsRequest.input(
+            'OriginalQuestionID',
+            sql.Int,
+            question.QuestionID
+          );
+          const optionsResult = await getOptionsRequest.query(`
+                        SELECT * FROM QuizOptions WHERE QuestionID = @OriginalQuestionID;
+                    `);
+          for (const option of optionsResult.recordset) {
+            const insertOptionRequest = transaction.request();
+            insertOptionRequest.input('NewQuestionID', sql.Int, newQuestionId);
+            insertOptionRequest.input(
+              'OptionText',
+              sql.NVarChar,
+              option.OptionText
+            );
+            insertOptionRequest.input(
+              'IsCorrectAnswer',
+              sql.Bit,
+              option.IsCorrectAnswer
+            );
+            insertOptionRequest.input(
+              'OptionOrder',
+              sql.Int,
+              option.OptionOrder
+            );
+            await insertOptionRequest.query(`
+                            INSERT INTO QuizOptions (QuestionID, OptionText, IsCorrectAnswer, OptionOrder)
+                            VALUES (@NewQuestionID, @OptionText, @IsCorrectAnswer, @OptionOrder);
+                        `);
+          }
+        }
+      }
+
+      // 5.2. CLONE ATTACHMENTS
+      const getAttachmentsRequest = transaction.request();
+      getAttachmentsRequest.input(
+        'OriginalLessonID_A',
+        sql.BigInt,
+        lesson.LessonID
+      );
+      const attachmentsResult = await getAttachmentsRequest.query(`
+                SELECT * FROM LessonAttachments WHERE LessonID = @OriginalLessonID_A;
+            `);
+      for (const attachment of attachmentsResult.recordset) {
+        const insertAttachmentRequest = transaction.request();
+        insertAttachmentRequest.input('NewLessonID_A', sql.BigInt, newLessonId);
+        insertAttachmentRequest.input(
+          'FileName',
+          sql.NVarChar,
+          attachment.FileName
+        );
+        insertAttachmentRequest.input(
+          'FileURL',
+          sql.VarChar,
+          attachment.FileURL
+        );
+        insertAttachmentRequest.input(
+          'FileType',
+          sql.VarChar,
+          attachment.FileType
+        );
+        insertAttachmentRequest.input(
+          'FileSize',
+          sql.BigInt,
+          attachment.FileSize
+        );
+        insertAttachmentRequest.input(
+          'CloudStorageID',
+          sql.VarChar,
+          attachment.CloudStorageID
+        );
+        await insertAttachmentRequest.query(`
+                    INSERT INTO LessonAttachments (LessonID, FileName, FileURL, FileType, FileSize, CloudStorageID)
+                    VALUES (@NewLessonID_A, @FileName, @FileURL, @FileType, @FileSize, @CloudStorageID);
+                `);
+      }
+
+      // 5.3. CLONE SUBTITLES
+      const getSubtitlesRequest = transaction.request();
+      getSubtitlesRequest.input(
+        'OriginalLessonID_S',
+        sql.BigInt,
+        lesson.LessonID
+      );
+      const subtitlesResult = await getSubtitlesRequest.query(`
+                SELECT * FROM LessonSubtitles WHERE LessonID = @OriginalLessonID_S;
+            `);
+      for (const subtitle of subtitlesResult.recordset) {
+        const insertSubtitleRequest = transaction.request();
+        insertSubtitleRequest.input('NewLessonID_S', sql.BigInt, newLessonId);
+        insertSubtitleRequest.input(
+          'LanguageCode',
+          sql.VarChar,
+          subtitle.LanguageCode
+        );
+        insertSubtitleRequest.input(
+          'SubtitleUrl',
+          sql.VarChar,
+          subtitle.SubtitleUrl
+        );
+        insertSubtitleRequest.input('IsDefault', sql.Bit, subtitle.IsDefault);
+        await insertSubtitleRequest.query(`
+                    INSERT INTO LessonSubtitles (LessonID, LanguageCode, SubtitleUrl, IsDefault)
+                    VALUES (@NewLessonID_S, @LanguageCode, @SubtitleUrl, @IsDefault);
+                `);
+      }
+    }
+  }
+};
+
 module.exports = {
   createCourse,
   findCourseById,
@@ -750,4 +1100,7 @@ module.exports = {
   findCourseWithFullDetailsBySlug,
   findCourseWithFullDetailsById,
   getAllCourseStatuses,
+  findExistingUpdateDraft,
+  cloneCourseRecord,
+  cloneCurriculum,
 };

@@ -70,6 +70,15 @@ const getCourse = {
 };
 
 /**
+ * Validate find pending approval request by courseId params
+ */
+const findPendingApprovalRequestByCourseId = {
+  params: Joi.object().keys({
+    courseId: Joi.number().integer().required(),
+  }),
+};
+
+/**
  * Validate update course payload
  */
 const updateCourse = {
@@ -81,7 +90,7 @@ const updateCourse = {
       courseName: Joi.string().max(500),
       categoryId: Joi.number().integer(),
       levelId: Joi.number().integer(),
-      shortDescription: Joi.string().max(500),
+      shortDescription: Joi.string(),
       fullDescription: Joi.string(),
       requirements: nvarcharMax,
       learningOutcomes: nvarcharMax,
@@ -91,6 +100,7 @@ const updateCourse = {
       discountedPrice: nullablePrice,
       language: Joi.string().max(10),
       slug,
+      isFeatured: Joi.boolean(),
     })
     .min(1)
     .custom((value, helpers) => {
@@ -117,6 +127,15 @@ const updateCourse = {
 const deleteCourse = {
   params: Joi.object().keys({
     courseId: Joi.number().integer().required(),
+  }),
+};
+
+/**
+ * Validate cancel update course params
+ */
+const cancelUpdateCourse = {
+  params: Joi.object().keys({
+    updateCourseId: Joi.number().integer().required(),
   }),
 };
 
@@ -363,4 +382,6 @@ module.exports = {
   sectionPayloadSchema,
   getCoursesByCategorySlug,
   getCoursesByInstructor,
+  cancelUpdateCourse,
+  findPendingApprovalRequestByCourseId,
 };

@@ -23,7 +23,7 @@ const createAttachment = async (attachmentData, transaction = null) => {
   );
   executor.input('FileType', sql.VarChar, attachmentData.FileType);
   executor.input('FileSize', sql.BigInt, attachmentData.FileSize);
-  executor.input('CloudStorageID', sql.VarChar, null);
+  executor.input('CloudStorageID', sql.VarChar, attachmentData.CloudStorageID);
 
   try {
     const result = await executor.query(`
@@ -171,6 +171,37 @@ const deleteAttachmentsByIds = async (attachmentIds, transaction) => {
   }
 };
 
+/**
+ * Xóa tất cả attachments của một bài học.
+ * Cần lấy CloudStorageID trước để service xử lý xóa file trên cloud.
+ * @param {number} lessonId
+ * @param {object} transaction
+ * @returns {Promise<{deletedCount: number, filesToDelete: Array<{CloudStorageID: string}>}>}
+ */
+const deleteAttachmentsByLessonId = async (lessonId, transaction) => {
+  if (!lessonId) return { deletedCount: 0, filesToDelete: [] };
+  const request = transaction.request();
+  request.input('LessonID', sql.BigInt, lessonId);
+  try {
+    const filesResult = await request.query(`
+        SELECT CloudStorageID FROM LessonAttachments 
+        WHERE LessonID = @LessonID AND CloudStorageID IS NOT NULL;
+    `);
+    const filesToDelete = filesResult.recordset;
+
+    const deleteResult = await request.query(`
+      DELETE FROM LessonAttachments WHERE LessonID = @LessonID;
+    `);
+    const deletedCount = deleteResult.rowsAffected[0];
+    logger.info(`Deleted ${deletedCount} attachments for lesson ${lessonId}.`);
+
+    return { deletedCount, filesToDelete };
+  } catch (error) {
+    logger.error(`Error deleting attachments for lesson ${lessonId}:`, error);
+    throw error;
+  }
+};
+
 module.exports = {
   createAttachment,
   findAttachmentById,
@@ -178,4 +209,5 @@ module.exports = {
   deleteAttachmentById,
   findAttachmentsByLessonIds,
   deleteAttachmentsByIds,
+  deleteAttachmentsByLessonId,
 };

@@ -17,7 +17,7 @@ const getDashboardOverview = async () => {
   // 1. Định dạng lại Stats
   const formattedStats = {
     totalRevenue: {
-      currency: 'VND', // Giả sử tiền tệ cơ sở là VND
+      currency: 'VND',
       amount: parseFloat(stats.totalRevenue) || 0,
     },
     totalStudents: stats.totalStudents || 0,

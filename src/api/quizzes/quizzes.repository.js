@@ -1,7 +1,10 @@
 const httpStatus = require('http-status').status;
 const ApiError = require('../../core/errors/ApiError');
 const { getConnection, sql } = require('../../database/connection');
-const { toPascalCaseObject } = require('../../utils/caseConverter');
+const {
+  toPascalCaseObject,
+  toCamelCaseObject,
+} = require('../../utils/caseConverter');
 const logger = require('../../utils/logger');
 
 /**
@@ -43,7 +46,9 @@ const createOptionsForQuestion = async (
   optionsData,
   transaction
 ) => {
-  for (const option of optionsData) {
+  const optionsDataCamelCase = optionsData.map((opt) => toCamelCaseObject(opt));
+  for (const option of optionsDataCamelCase) {
+    logger.info(`Creating option for question ${questionId}:`, option);
     const request = transaction.request();
     request.input('QuestionID', sql.Int, questionId);
     request.input('OptionText', sql.NVarChar, option.optionText);
@@ -107,7 +112,7 @@ const findQuestionsWithOptionsByLessonId = async (
     const questionsRequest = pool.request();
     questionsRequest.input('LessonID', sql.BigInt, lessonId);
     const questionsResult = await questionsRequest.query(`
-            SELECT * FROM QuizQuestions WHERE LessonID = @LessonID ORDER BY QuestionOrder ASC;
+            SELECT * FROM QuizQuestions WHERE LessonID = @LessonID And IsArchived = 0 ORDER BY QuestionOrder ASC;
         `);
     const questions = questionsResult.recordset;
 
@@ -202,6 +207,126 @@ const deleteOptionsByQuestionId = async (questionId, transaction) => {
   await request.query(
     'DELETE FROM QuizOptions WHERE QuestionID = @QuestionID;'
   );
+};
+
+/**
+ * Xóa tất cả câu hỏi (và các options liên quan do CASCADE) của một bài học.
+ * @param {number} lessonId
+ * @param {object} transaction
+ * @returns {Promise<number>} - Số lượng câu hỏi đã xóa.
+ */
+const deleteQuestionsByLessonId = async (lessonId, transaction) => {
+  if (!lessonId) return 0;
+  const request = transaction.request();
+  request.input('LessonID', sql.BigInt, lessonId);
+  try {
+    const result = await request.query(`
+      DELETE FROM QuizQuestions WHERE LessonID = @LessonID;
+    `);
+    logger.info(
+      `Deleted ${result.rowsAffected[0]} questions for lesson ${lessonId}.`
+    );
+    return result.rowsAffected[0];
+  } catch (error) {
+    logger.error(`Error deleting questions for lesson ${lessonId}:`, error);
+    throw error;
+  }
+};
+
+/**
+ * [MỚI] Đánh dấu một mảng các câu hỏi là đã lưu trữ.
+ * @param {number[]} questionIds
+ * @param {object} transaction
+ */
+const archiveQuestionsByIds = async (questionIds, transaction) => {
+  if (!questionIds || questionIds.length === 0) return 0;
+  const request = transaction.request();
+  const idPlaceholders = questionIds
+    .map((_, index) => `@id_q_arc_${index}`)
+    .join(',');
+  questionIds.forEach((id, index) =>
+    request.input(`id_q_arc_${index}`, sql.Int, id)
+  );
+
+  const result = await request.query(`
+    UPDATE QuizQuestions SET IsArchived = 1, UpdatedAt = GETDATE()
+    WHERE QuestionID IN (${idPlaceholders});
+  `);
+  return result.rowsAffected[0];
+};
+
+/**
+ * [MỚI] Đánh dấu một mảng các lựa chọn là đã lưu trữ.
+ * @param {number[]} optionIds
+ * @param {object} transaction
+ */
+const archiveOptionsByIds = async (optionIds, transaction) => {
+  if (!optionIds || optionIds.length === 0) return 0;
+  const request = transaction.request();
+  const idPlaceholders = optionIds
+    .map((_, index) => `@id_o_arc_${index}`)
+    .join(',');
+  optionIds.forEach((id, index) =>
+    request.input(`id_o_arc_${index}`, sql.BigInt, id)
+  );
+
+  const result = await request.query(`
+    UPDATE QuizOptions SET IsArchived = 1
+    WHERE OptionID IN (${idPlaceholders});
+  `);
+  return result.rowsAffected[0];
+};
+
+/**
+ * [MỚI] Đánh dấu tất cả câu hỏi của một bài học là đã lưu trữ.
+ * (Và các options liên quan cũng nên được đánh dấu)
+ * @param {number} lessonId
+ * @param {object} transaction
+ * @returns {Promise<void>}
+ */
+const archiveQuestionsByLessonId = async (lessonId, transaction) => {
+  if (!lessonId) return;
+  const request = transaction.request();
+  request.input('LessonID', sql.BigInt, lessonId);
+  try {
+    // Tìm các QuestionID cần archive
+    const questionsResult = await request.query(`
+        SELECT QuestionID FROM QuizQuestions WHERE LessonID = @LessonID AND IsArchived = 0;
+    `);
+    const questionIdsToArchive = questionsResult.recordset.map(
+      (q) => q.QuestionID
+    );
+
+    if (questionIdsToArchive.length > 0) {
+      const qIdPlaceholders = questionIdsToArchive
+        .map((_, i) => `@qId_${i}`)
+        .join(',');
+      questionIdsToArchive.forEach((id, i) =>
+        request.input(`qId_${i}`, sql.Int, id)
+      );
+
+      // Archive các options trước
+      await request.query(`
+            UPDATE QuizOptions SET IsArchived = 1 
+            WHERE QuestionID IN (${qIdPlaceholders});
+        `);
+
+      // Sau đó archive các questions
+      const result = await request.query(`
+            UPDATE QuizQuestions SET IsArchived = 1, UpdatedAt = GETDATE()
+            WHERE QuestionID IN (${qIdPlaceholders});
+        `);
+      logger.info(
+        `(Sync) Archived ${result.rowsAffected[0]} questions and their options for lesson ${lessonId}.`
+      );
+    }
+  } catch (error) {
+    logger.error(
+      `(Sync) Error archiving questions for lesson ${lessonId}:`,
+      error
+    );
+    throw error;
+  }
 };
 
 /**
@@ -551,7 +676,7 @@ const findAllOptionsByQuestionIds = async (questionIds, transaction = null) => {
   try {
     const result = await executor.query(`
           SELECT * FROM QuizOptions
-          WHERE QuestionID IN (${qIdPlaceholders})
+          WHERE QuestionID IN (${qIdPlaceholders}) AND IsArchived = 0
           ORDER BY QuestionID, OptionOrder ASC;
       `);
     return result.recordset;
@@ -595,7 +720,7 @@ const findAllQuestionsWithOptionsByLessonIds = async (
   try {
     const questionsResult = await executor.query(`
           SELECT * FROM QuizQuestions
-          WHERE LessonID IN (${lessonIdPlaceholders})
+          WHERE LessonID IN (${lessonIdPlaceholders}) AND IsArchived = 0
           ORDER BY LessonID, QuestionOrder ASC;
       `);
     const questions = questionsResult.recordset;
@@ -760,6 +885,10 @@ module.exports = {
   findQuestionsWithOptionsByLessonId,
   updateQuestionById,
   deleteOptionsByQuestionId,
+  deleteQuestionsByLessonId,
+  archiveQuestionsByIds,
+  archiveOptionsByIds,
+  archiveQuestionsByLessonId,
   deleteQuestionById,
   getMaxAttemptNumber,
   createQuizAttempt,

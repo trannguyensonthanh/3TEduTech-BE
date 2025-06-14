@@ -114,6 +114,14 @@ const updateCategory = async (categoryId, updateData) => {
     }
   }
 
+  if (updateData.description) {
+    dataToUpdate.Description = updateData.description;
+  }
+
+  if (updateData.iconUrl) {
+    dataToUpdate.IconUrl = updateData.iconUrl;
+  }
+
   if (Object.keys(dataToUpdate).length === 0) {
     return category;
   }

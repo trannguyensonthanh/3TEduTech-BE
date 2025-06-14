@@ -114,8 +114,11 @@ const getQuestionsForInstructor = async (lessonId, user) => {
       'Bài học này không phải loại QUIZ.'
     );
   await checkCourseAccess(lesson.CourseID, user, 'xem câu hỏi quiz');
-
-  return quizRepository.findQuestionsWithOptionsByLessonId(lessonId, true);
+  const result = await quizRepository.findQuestionsWithOptionsByLessonId(
+    lessonId,
+    true
+  );
+  return toCamelCaseObject(result);
 };
 
 /**

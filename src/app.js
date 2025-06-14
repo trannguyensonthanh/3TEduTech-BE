@@ -98,6 +98,7 @@ const currencyRoutes = require('./api/currencies/currencies.routes');
 const exchangeRateRoutes = require('./api/exchangeRates/exchangeRates.routes');
 const paymentMethodRoutes = require('./api/payments/paymentMethod.routes');
 const adminRoutes = require('./api/admin/admin.routes');
+const eventRoutes = require('./api/events/events.routes');
 
 apiV1Router.use('/auth', authRoutes);
 apiV1Router.use('/users', userRoutes);
@@ -126,7 +127,7 @@ apiV1Router.use('/currencies', currencyRoutes);
 apiV1Router.use('/exchange-rates', exchangeRateRoutes);
 apiV1Router.use('/payment-methods', paymentMethodRoutes);
 apiV1Router.use('/admin', adminRoutes);
-
+apiV1Router.use('/events', eventRoutes);
 app.use('/v1', apiV1Router);
 
 app.use((req, res, next) => {

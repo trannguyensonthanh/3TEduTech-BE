@@ -17,6 +17,8 @@ const dbConfig = {
     min: 0,
     idleTimeoutMillis: 30000,
   },
+  requestTimeout: 60000, // Tăng thời gian chờ request lên 60 giây (60000ms)
+  connectionTimeout: 30000, // Thời gian chờ kết nối
 };
 
 let pool = null;

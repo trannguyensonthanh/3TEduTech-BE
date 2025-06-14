@@ -3,6 +3,7 @@
 const httpStatus = require('http-status').status;
 const { pick } = require('lodash');
 const instructorService = require('./instructors.service');
+const courseService = require('../courses/courses.service');
 const { catchAsync } = require('../../utils/catchAsync');
 const ApiError = require('../../core/errors/ApiError');
 const logger = require('../../utils/logger');
@@ -95,6 +96,38 @@ const getMyFinancialOverview = catchAsync(async (req, res) => {
   res.status(httpStatus.OK).send(overview);
 });
 
+const getMyDashboardOverview = catchAsync(async (req, res) => {
+  const overviewData = await instructorService.getMyDashboardOverview(
+    req.user.id
+  );
+  res.status(httpStatus.OK).send(overviewData);
+});
+
+/**
+ * [MỚI] Lấy danh sách khóa học của giảng viên hiện tại.
+ */
+const getMyCourses = catchAsync(async (req, res) => {
+  const instructorId = req.user.id;
+  const filters = pick(req.query, [
+    'searchTerm',
+    'statusId',
+    'categoryId',
+    'levelId',
+  ]);
+  const options = pick(req.query, ['page', 'limit', 'sortBy']);
+  const { targetCurrency } = req; // Lấy từ middleware
+
+  // Gọi service từ module courses
+  const result = await courseService.getMyCourses(
+    instructorId,
+    filters,
+    options,
+    targetCurrency
+  );
+
+  res.status(httpStatus.OK).send(result);
+});
+
 module.exports = {
   getMyProfile,
   updateMyProfile,
@@ -106,4 +139,6 @@ module.exports = {
   getInstructors,
   getMyFinancialOverview,
   getMyStudents,
+  getMyDashboardOverview,
+  getMyCourses,
 };

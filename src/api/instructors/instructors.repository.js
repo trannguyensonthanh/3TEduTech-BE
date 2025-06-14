@@ -1,4 +1,6 @@
 const httpStatus = require('http-status').status;
+const CourseStatus = require('../../core/enums/CourseStatus');
+const OrderStatus = require('../../core/enums/OrderStatus');
 const Roles = require('../../core/enums/Roles');
 const ApiError = require('../../core/errors/ApiError');
 const { getConnection, sql } = require('../../database/connection');
@@ -635,6 +637,132 @@ const findStudentsOfInstructor = async ({
     total,
   };
 };
+
+/**
+ * [MỚI] Lấy các chỉ số thống kê tổng quan cho một giảng viên.
+ * @param {number} instructorId
+ * @returns {Promise<{totalStudents: number, totalCourses: number}>}
+ */
+const getInstructorStats = async (instructorId) => {
+  try {
+    const pool = await getConnection();
+    const request = pool.request();
+    request.input('InstructorID', sql.BigInt, instructorId);
+
+    const query = `
+      DECLARE @TotalStudents INT = (
+        SELECT COUNT(DISTINCT e.AccountID) 
+        FROM Enrollments e
+        JOIN Courses c ON e.CourseID = c.CourseID
+        WHERE c.InstructorID = @InstructorID
+      );
+
+      DECLARE @TotalCourses INT = (
+        SELECT COUNT(CourseID) 
+        FROM Courses 
+        WHERE InstructorID = @InstructorID 
+        AND StatusID IN ('${CourseStatus.PUBLISHED}', '${CourseStatus.UPDATING}')
+      );
+
+      SELECT @TotalStudents as totalStudents, @TotalCourses as totalCourses;
+    `;
+
+    const result = await request.query(query);
+    return result.recordset[0] || { totalStudents: 0, totalCourses: 0 };
+  } catch (error) {
+    logger.error(`Error fetching stats for instructor ${instructorId}:`, error);
+    throw error;
+  }
+};
+
+/**
+ * [MỚI] Lấy 5 lượt đăng ký gần đây nhất cho các khóa học của một giảng viên.
+ * @param {number} instructorId
+ * @returns {Promise<Array<object>>}
+ */
+const getRecentEnrollments = async (instructorId) => {
+  try {
+    const pool = await getConnection();
+    const request = pool.request();
+    request.input('InstructorID', sql.BigInt, instructorId);
+
+    const query = `
+      SELECT TOP 5
+        e.AccountID as StudentAccountId,
+        up.FullName as StudentName,
+        up.AvatarUrl as StudentAvatarUrl,
+        c.CourseID,
+        c.CourseName,
+        e.EnrolledAt
+      FROM Enrollments e
+      JOIN Courses c ON e.CourseID = c.CourseID
+      JOIN UserProfiles up ON e.AccountID = up.AccountID
+      WHERE c.InstructorID = @InstructorID
+      ORDER BY e.EnrolledAt DESC;
+    `;
+
+    const result = await request.query(query);
+    return result.recordset;
+  } catch (error) {
+    logger.error(
+      `Error fetching recent enrollments for instructor ${instructorId}:`,
+      error
+    );
+    throw error;
+  }
+};
+
+/**
+ * [MỚI] Lấy 5 khóa học có hiệu suất tốt nhất trong 30 ngày qua.
+ * @param {number} instructorId
+ * @returns {Promise<Array<object>>}
+ */
+const getTopPerformingCourses = async (instructorId) => {
+  try {
+    const pool = await getConnection();
+    const request = pool.request();
+    request.input('InstructorID', sql.BigInt, instructorId);
+
+    // Lấy ngày bắt đầu là 30 ngày trước
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    request.input('StartDate', sql.DateTime, thirtyDaysAgo);
+    request.input('CompletedStatus', sql.VarChar, OrderStatus.COMPLETED);
+
+    const query = `
+      WITH RecentPerformance AS (
+        SELECT
+          oi.CourseID,
+          COUNT(DISTINCT o.AccountID) as RecentEnrollments,
+          SUM(oi.PriceAtOrder) as RecentRevenue
+        FROM OrderItems oi
+        JOIN Orders o ON oi.OrderID = o.OrderID
+        WHERE o.OrderStatus = @CompletedStatus AND o.OrderDate >= @StartDate
+        GROUP BY oi.CourseID
+      )
+      SELECT TOP 5
+        c.CourseID,
+        c.CourseName,
+        c.Slug as CourseSlug,
+        ISNULL(rp.RecentEnrollments, 0) as RecentEnrollments,
+        ISNULL(rp.RecentRevenue, 0) as RecentRevenue
+      FROM Courses c
+      JOIN RecentPerformance rp ON c.CourseID = rp.CourseID
+      WHERE c.InstructorID = @InstructorID
+      ORDER BY RecentRevenue DESC, RecentEnrollments DESC;
+    `;
+
+    const result = await request.query(query);
+    return result.recordset;
+  } catch (error) {
+    logger.error(
+      `Error fetching top performing courses for instructor ${instructorId}:`,
+      error
+    );
+    throw error;
+  }
+};
+
 module.exports = {
   findOrCreateInstructorProfile,
   updateInstructorProfile,
@@ -648,4 +776,7 @@ module.exports = {
   getInstructorBankInfo,
   findAllInstructors,
   findStudentsOfInstructor,
+  getInstructorStats,
+  getRecentEnrollments,
+  getTopPerformingCourses,
 };

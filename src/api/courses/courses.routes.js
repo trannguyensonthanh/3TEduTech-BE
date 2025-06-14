@@ -136,15 +136,6 @@ router.patch(
  */
 router.get('/course-statuses/statuses', courseController.getCourseStatuses);
 
-/**
- * Lấy danh sách khóa học theo instructorId
- */
-router.get(
-  '/by-instructor/:instructorId',
-  validate(courseValidation.getCoursesByInstructor),
-  courseController.getCoursesByInstructorId
-);
-
 router.use('/:courseId/sections', sectionRouter);
 router.use('/:courseId/reviews', courseScopedReviewRouter);
 router.use('/:courseId/discussions', courseDiscussionRouter);

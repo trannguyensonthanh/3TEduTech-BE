@@ -215,24 +215,24 @@ const getCoursesByCategorySlug = catchAsync(async (req, res) => {
   res.status(httpStatus.OK).send(result);
 });
 
-/**
- * Lấy danh sách khóa học theo instructorId
- */
-const getCoursesByInstructorId = catchAsync(async (req, res) => {
-  const { instructorId } = req.params;
+// /**
+//  * Lấy danh sách khóa học theo instructorId
+//  */
+// const getCoursesByInstructorId = catchAsync(async (req, res) => {
+//   const { instructorId } = req.params;
 
-  const filterOptions = pick(req.query, ['searchTerm', 'statusId']);
-  const paginationOptions = pick(req.query, ['page', 'limit', 'sortBy']);
+//   const filterOptions = pick(req.query, ['searchTerm', 'statusId']);
+//   const paginationOptions = pick(req.query, ['page', 'limit', 'sortBy']);
 
-  const result = await courseService.queryCoursesByInstructor(
-    instructorId,
-    filterOptions,
-    paginationOptions,
-    req.user,
-    req.targetCurrency
-  );
-  res.status(httpStatus.OK).send(result);
-});
+//   const result = await courseService.queryCoursesByInstructor(
+//     instructorId,
+//     filterOptions,
+//     paginationOptions,
+//     req.user,
+//     req.targetCurrency
+//   );
+//   res.status(httpStatus.OK).send(result);
+// });
 
 /**
  * Lấy yêu cầu duyệt khóa học đang chờ xử lý (PENDING) theo CourseID
@@ -289,7 +289,7 @@ module.exports = {
   updateCourseIntroVideo,
   getCourseStatuses,
   getCoursesByCategorySlug,
-  getCoursesByInstructorId,
+  // getCoursesByInstructorId,
   createUpdateSession,
   cancelUpdate,
 };

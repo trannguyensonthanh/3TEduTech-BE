@@ -152,6 +152,43 @@ const getCourses = async (
 };
 
 /**
+ *  Lấy danh sách khóa học dựa trên bộ lọc và tùy chọn được cung cấp.
+ * Hàm này không tự ý thêm filter, nó chỉ thực thi những gì được truyền vào.
+ */
+const queryCourses = async (
+  filters = {},
+  options = {},
+  targetCurrency = 'VND'
+) => {
+  const { page = 1, limit = 10 } = options;
+
+  // Gọi thẳng repository với filter đã được chuẩn bị sẵn từ service cha
+  const result = await courseRepository.findAllCourses(filters, options);
+
+  const coursesWithPricing = await Promise.all(
+    result.courses.map(async (course) => {
+      const pricing = await pricingUtil.createPricingObject(
+        course,
+        targetCurrency
+      );
+      // Giữ lại toCamelCaseObject để đảm bảo casing nhất quán
+      const camelCaseCourse = toCamelCaseObject(course);
+      delete camelCaseCourse.originalPrice;
+      delete camelCaseCourse.discountedPrice;
+      return { ...camelCaseCourse, pricing };
+    })
+  );
+
+  return {
+    courses: coursesWithPricing,
+    total: result.total,
+    page: parseInt(page, 10),
+    limit: parseInt(limit, 10),
+    totalPages: limit > 0 ? Math.ceil(result.total / limit) : 1,
+  };
+};
+
+/**
  * Lấy chi tiết một khóa học bằng slug, bao gồm TOÀN BỘ curriculum.
  */
 const getCourseBySlug = async (slug, user = null, targetCurrency) => {
@@ -1314,63 +1351,6 @@ const queryCoursesByCategorySlug = async (
 };
 
 /**
- * Query for courses by instructor ID with pagination and filtering.
- */
-const queryCoursesByInstructor = async (
-  instructorId,
-  filterOptions,
-  paginationOptions,
-  currentUser = null,
-  targetCurrency = 'USD'
-) => {
-  const instructor = await userRepository.findUserById(instructorId);
-  if (
-    !instructor ||
-    (instructor.RoleID !== Roles.INSTRUCTOR &&
-      instructor.RoleID !== Roles.SUPERADMIN)
-  ) {
-    throw new ApiError(httpStatus.NOT_FOUND, 'Instructor not found');
-  }
-  let canViewNonPublished = false;
-  if (currentUser) {
-    if (
-      currentUser.accountId === parseInt(instructorId, 10) ||
-      [Roles.ADMIN, Roles.SUPERADMIN].includes(currentUser.roleId)
-    ) {
-      canViewNonPublished = true;
-    }
-  }
-  let effectiveStatusId = filterOptions.statusId;
-  if (!filterOptions.statusId && !canViewNonPublished) {
-    effectiveStatusId = CourseStatus.PUBLISHED;
-  } else if (!filterOptions.statusId && canViewNonPublished) {
-    effectiveStatusId = null;
-  }
-  const combinedFilterOptions = {
-    ...filterOptions,
-    instructorId: parseInt(instructorId, 10),
-    statusId: effectiveStatusId,
-  };
-  const coursesResult = await courseRepository.findAllCourses(
-    combinedFilterOptions,
-    paginationOptions
-  );
-  for (const course of coursesResult.courses) {
-    course.pricing = await pricingUtil.createPricingObject(
-      course,
-      targetCurrency
-    );
-  }
-  return {
-    courses: toCamelCaseObject(coursesResult.courses),
-    total: coursesResult.total,
-    page: parseInt(paginationOptions.page, 10),
-    limit: parseInt(paginationOptions.limit, 10),
-    totalPages: Math.ceil(coursesResult.total / paginationOptions.limit),
-  };
-};
-
-/**
  * Hủy một phiên cập nhật và khôi phục trạng thái của khóa học gốc.
  */
 const cancelUpdate = async (updateCourseId, user) => {
@@ -1495,6 +1475,27 @@ const createUpdateSession = async (courseId, user) => {
   }
 };
 
+// Lấy danh sách khóa học của chính giảng viên đang đăng nhập.
+const getMyCourses = async (instructorId, filters, options, targetCurrency) => {
+  const effectiveFilters = {
+    ...filters,
+    instructorId,
+  };
+  if (!effectiveFilters.statusId) {
+    effectiveFilters.statusId = 'ALL';
+  }
+  return queryCourses(effectiveFilters, options, targetCurrency);
+};
+
+// Lấy danh sách các khóa học đã xuất bản (cho trang public). => ch đc xài
+const getPublicCourses = async (filters, options, targetCurrency) => {
+  const effectiveFilters = {
+    ...filters,
+    statusId: CourseStatus.PUBLISHED,
+  };
+  return queryCourses(effectiveFilters, options, targetCurrency);
+};
+
 module.exports = {
   createCourse,
   getCourses,
@@ -1511,7 +1512,9 @@ module.exports = {
   getPendingApprovalRequestByCourseId,
   getCourseStatuses,
   queryCoursesByCategorySlug,
-  queryCoursesByInstructor,
+
   createUpdateSession,
   cancelUpdate,
+  getMyCourses,
+  getPublicCourses,
 };

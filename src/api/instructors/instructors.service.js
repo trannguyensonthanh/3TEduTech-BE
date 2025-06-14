@@ -580,6 +580,67 @@ const getMyFinancialOverview = async (instructorId) => {
   }
 };
 
+/**
+ * Lấy dữ liệu tổng hợp cho Dashboard của Giảng viên.
+ * @param {number} instructorId
+ * @returns {Promise<InstructorDashboardData>}
+ */
+const getMyDashboardOverview = async (instructorId) => {
+  try {
+    // Gọi tất cả các hàm lấy dữ liệu một cách đồng thời
+    const [
+      statsData,
+      recentEnrollmentsData,
+      topPerformingCoursesData,
+      totalLifetimeEarnings,
+      availableBalance,
+    ] = await Promise.all([
+      instructorRepository.getInstructorStats(instructorId),
+      instructorRepository.getRecentEnrollments(instructorId),
+      instructorRepository.getTopPerformingCourses(instructorId),
+      balanceTransactionRepository.getTotalLifetimeEarnings(instructorId), // Lấy tổng doanh thu
+      balanceTransactionRepository.getCurrentBalance(instructorId), // Lấy số dư hiện tại
+    ]);
+
+    // 1. Lắp ráp phần Stats
+    const stats = {
+      totalStudents: statsData.totalStudents,
+      totalCourses: statsData.totalCourses,
+      totalLifetimeEarnings: parseFloat(totalLifetimeEarnings.toString()),
+      availableBalance: parseFloat(availableBalance.toString()),
+      currencyId: Currency.VND, // Tiền tệ cơ sở của hệ thống
+    };
+
+    // 2. Lắp ráp phần Recent Enrollments
+    const recentEnrollments = toCamelCaseObject(recentEnrollmentsData);
+
+    // 3. Lắp ráp phần Top Performing Courses
+    const topPerformingCourses = topPerformingCoursesData.map((course) => ({
+      courseId: course.CourseID,
+      courseName: course.CourseName,
+      courseSlug: course.CourseSlug,
+      recentEnrollments: course.RecentEnrollments,
+      recentRevenue: parseFloat(course.RecentRevenue.toString()),
+    }));
+
+    // 4. Trả về object cuối cùng
+    return {
+      stats,
+      recentEnrollments,
+      topPerformingCourses,
+    };
+  } catch (error) {
+    logger.error(
+      `Error fetching dashboard overview for instructor ${instructorId}:`,
+      error
+    );
+    throw new ApiError(
+      httpStatus.INTERNAL_SERVER_ERROR,
+      'Không thể tải dữ liệu dashboard.'
+    );
+  }
+};
+
 module.exports = {
   getMyInstructorProfile,
   updateMyInstructorProfile,
@@ -597,4 +658,5 @@ module.exports = {
   queryInstructors,
   getStudentsOfInstructor,
   getMyFinancialOverview,
+  getMyDashboardOverview,
 };

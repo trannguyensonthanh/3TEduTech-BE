@@ -2,6 +2,8 @@ const express = require('express');
 const validate = require('../../middlewares/validation.middleware');
 const instructorValidation = require('./instructors.validation');
 const instructorController = require('./instructors.controller');
+const courseService = require('../courses/courses.service'); // <<< CẦN IMPORT courseService
+const courseValidation = require('../courses/courses.validation');
 
 const payoutMethodRoutes = require('./payoutMethod.routes');
 const {
@@ -19,6 +21,14 @@ router.get(
   '/:instructorId/profile',
   validate(instructorValidation.getInstructorPublicProfile),
   instructorController.getInstructorPublicProfile
+);
+
+router.get(
+  '/my-courses',
+  authenticate,
+  authorize([Roles.INSTRUCTOR, Roles.ADMIN, Roles.SUPERADMIN]),
+  validate(courseValidation.getCourses), // Tái sử dụng schema validation của getCourses
+  instructorController.getMyCourses
 );
 
 router.get(
@@ -84,6 +94,12 @@ router.use('/me/payout-methods', payoutMethodRoutes);
 router.get(
   '/me/financial-overview',
   instructorController.getMyFinancialOverview
+);
+
+router.get(
+  '/me/dashboard-overview',
+  // Không cần validation đặc biệt vì không có params/body
+  instructorController.getMyDashboardOverview
 );
 
 module.exports = router;

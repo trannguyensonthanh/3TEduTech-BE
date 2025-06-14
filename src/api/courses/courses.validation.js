@@ -350,24 +350,6 @@ const getCoursesByCategorySlug = {
   }),
 };
 
-/**
- * Validate get courses by instructor
- */
-const getCoursesByInstructor = {
-  params: Joi.object().keys({
-    instructorId: Joi.alternatives()
-      .try(Joi.number().integer(), objectId())
-      .required(),
-  }),
-  query: Joi.object().keys({
-    page: Joi.number().integer().min(1),
-    limit: Joi.number().integer().min(1),
-    sortBy: Joi.string(),
-    statusId: Joi.string().valid(...Object.values(CourseStatus)),
-    searchTerm: Joi.string().allow(''),
-  }),
-};
-
 module.exports = {
   createCourse,
   getCourses,
@@ -381,7 +363,7 @@ module.exports = {
   toggleFeature,
   sectionPayloadSchema,
   getCoursesByCategorySlug,
-  getCoursesByInstructor,
+
   cancelUpdateCourse,
   findPendingApprovalRequestByCourseId,
 };

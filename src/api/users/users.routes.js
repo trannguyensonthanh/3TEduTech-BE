@@ -14,6 +14,15 @@ const {
 
 const router = express.Router();
 
+// --- Route mới để Upload Avatar ---
+router.post(
+  '/me/avatar',
+  authenticate,
+  uploadImage.single('avatar'),
+  handleMulterError,
+  userController.updateMyAvatar
+);
+
 // --- Routes for Current Logged-in User ---
 router
   .route('/me')
@@ -23,15 +32,6 @@ router
     validate(userValidation.updateUserProfile),
     userController.updateMyProfile
   );
-
-// --- Route mới để Upload Avatar ---
-router.patch(
-  '/me/avatar',
-  authenticate,
-  uploadImage.single('avatar'),
-  handleMulterError,
-  userController.updateMyAvatar
-);
 
 // --- Routes for Admin ---
 router

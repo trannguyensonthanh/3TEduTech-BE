@@ -369,6 +369,7 @@ const updateCourse = async (courseId, updateBody, user) => {
       }
       dataToUpdate.Language = updateBody.language;
     }
+
     const updatedCourse = await courseRepository.updateCourseById(
       courseId,
       dataToUpdate,
@@ -1169,7 +1170,15 @@ const reviewCourseApproval = async (
         approvalRequest.RequestType === ApprovalRequestType.INITIAL_SUBMISSION
       ) {
         newCourseStatus = CourseStatus.PUBLISHED;
+      } else if (
+        decision === ApprovalStatus.APPROVED &&
+        approvalRequest.RequestType === ApprovalRequestType.RE_SUBMISSION
+      ) {
+        newCourseStatus = CourseStatus.PUBLISHED;
       } else {
+        console.log(
+          `Decision: ${decision}, RequestType: ${approvalRequest.RequestType}`
+        );
         throw new ApiError(httpStatus.BAD_REQUEST, 'Quyết định không hợp lệ.');
       }
       courseData = await courseRepository.findCourseById(courseId);

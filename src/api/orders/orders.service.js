@@ -194,12 +194,11 @@ const processSuccessfulOrder = async (
           item.CourseID,
           true
         );
-        if (
-          course &&
-          course.InstructorID &&
-          !instructorsToNotify.has(course.InstructorID)
-        ) {
-          instructorsToNotify.set(course.InstructorID, course.CourseName);
+        if (course && course.InstructorID) {
+          if (!instructorsToNotify.has(course.InstructorID)) {
+            instructorsToNotify.set(course.InstructorID, []);
+          }
+          instructorsToNotify.get(course.InstructorID).push(course.CourseName);
         }
       }
 

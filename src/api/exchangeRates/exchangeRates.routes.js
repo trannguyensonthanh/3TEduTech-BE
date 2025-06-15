@@ -10,7 +10,10 @@ const Roles = require('../../core/enums/Roles');
 
 const router = express.Router();
 
-router.use(authenticate, authorize([Roles.ADMIN, Roles.SUPERADMIN]));
+router.use(
+  authenticate,
+  authorize([Roles.ADMIN, Roles.SUPERADMIN, Roles.INSTRUCTOR])
+);
 
 router.post('/update-now', exchangeRateController.updateRatesNow);
 router.get(

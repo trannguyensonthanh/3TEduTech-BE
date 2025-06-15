@@ -61,7 +61,8 @@ function createPaymentUrl(
   vnpParams.vnp_OrderInfo = orderInfo;
   vnpParams.vnp_OrderType = orderType;
   vnpParams.vnp_Amount = amount * 100;
-  vnpParams.vnp_ReturnUrl = config.returnUrl;
+  vnpParams.vnp_ReturnUrl =
+    'https://guided-wallaby-measured.ngrok-free.app/v1/payments/vnpay_return';
   vnpParams.vnp_IpAddr = ipAddr;
   vnpParams.vnp_CreateDate = createDate;
   if (bankCode) {

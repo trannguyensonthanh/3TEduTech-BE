@@ -116,6 +116,29 @@ const findPaymentByOrderId = async (orderId) => {
   }
 };
 
+const findPendingPaymentByOrderId = async (orderId, methodId) => {
+  try {
+    const pool = await getConnection();
+    const request = pool.request();
+    request.input('OrderID', sql.BigInt, orderId);
+    request.input('PaymentMethodID', sql.VarChar, methodId);
+    request.input('PendingStatus', sql.VarChar, PaymentStatus.PENDING);
+
+    // Lấy bản ghi PENDING gần đây nhất
+    const result = await request.query(`
+        SELECT TOP 1 * FROM CoursePayments 
+        WHERE OrderID = @OrderID 
+          AND PaymentMethodID = @PaymentMethodID 
+          AND PaymentStatusID = @PendingStatus
+        ORDER BY CreatedAt DESC;
+    `);
+    return result.recordset[0] || null;
+  } catch (error) {
+    logger.error(`Error finding pending payment for order ${orderId}:`, error);
+    throw error;
+  }
+};
+
 /**
  * Cập nhật trạng thái thanh toán.
  * @param {number} paymentId
@@ -186,4 +209,5 @@ module.exports = {
   findPaymentByOrderId,
   updatePaymentStatus,
   findPaymentByExternalId,
+  findPendingPaymentByOrderId,
 };

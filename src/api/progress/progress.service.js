@@ -115,11 +115,12 @@ const updateLastWatchedPosition = async (
 const getCourseProgress = async (user, courseId) => {
   const accountId = user.id;
   const isAdmin = user.role === Roles.ADMIN || user.role === Roles.SUPERADMIN;
+  const isInstructor = user.role === Roles.INSTRUCTOR;
   logger.info(
     `Getting course progress for user ${accountId}, course ${courseId}.`
   );
   const enrolled = await enrollmentService.isUserEnrolled(accountId, courseId);
-  if (!enrolled && !isAdmin) {
+  if (!enrolled && !isAdmin && !isInstructor) {
     logger.error(
       `User ${accountId} attempted to access progress for course ${courseId} without enrollment.`
     );

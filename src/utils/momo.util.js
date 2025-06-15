@@ -113,17 +113,59 @@ const createPaymentRequest = async (paymentData) => {
   }
 };
 /**
- * Xác thực chữ ký IPN từ MoMo.
- * @param {object} requestBody - Body của webhook request.
+ * Xác thực chữ ký IPN từ MoMo theo đúng tài liệu IPN v2.4 (ĐÚNG THỨ TỰ).
+ * @param {object} body - Body của webhook request.
  * @returns {boolean} - True nếu chữ ký hợp lệ.
  */
-const verifyIpnSignature = (requestBody) => {
-  const { signature: receivedSignature, ...rest } = requestBody;
+const verifyIpnSignature = (body) => {
+  const { signature: receivedSignature } = body;
 
-  const rawSignature = Object.keys(rest)
-    .sort()
-    .map((key) => `${key}=${rest[key]}`)
-    .join('&');
+  if (!config.momo.secretKey || !receivedSignature) {
+    logger.error(
+      'Cannot verify MoMo IPN: IPN_SECRET or received signature is missing.'
+    );
+    return false;
+  }
+
+  // ================================================================
+  // <<< SỬA LỖI LẦN CUỐI CÙNG: XÂY DỰNG CHUỖI KÝ THEO ĐÚNG THỨ TỰ CỦA MOMO >>>
+  // ================================================================
+
+  // Lấy các giá trị, nếu không có thì dùng chuỗi rỗng
+  const partnerCode = body.partnerCode || '';
+  const accessKey = body.accessKey || '';
+  const requestId = body.requestId || '';
+  const amount = body.amount || '';
+  const orderId = body.orderId || '';
+  const orderInfo = body.orderInfo || '';
+  const orderType = body.orderType || '';
+  const transId = body.transId || '';
+  const message = body.message || '';
+  const localMessage = body.localMessage || '';
+  const responseTime = body.responseTime || '';
+  const errorCode = body.errorCode || ''; // resultCode chỉ có trong response tạo yêu cầu, IPN dùng errorCode
+  const payType = body.payType || '';
+  const extraData = body.extraData || '';
+
+  // Tạo chuỗi ký theo ĐÚNG THỨ TỰ trong tài liệu của MoMo
+  const rawSignature =
+    `partnerCode=${partnerCode}` +
+    `&accessKey=${accessKey}` +
+    `&requestId=${requestId}` +
+    `&amount=${amount}` +
+    `&orderId=${orderId}` +
+    `&orderInfo=${orderInfo}` +
+    `&orderType=${orderType}` +
+    `&transId=${transId}` +
+    `&message=${message}` +
+    `&localMessage=${localMessage}` +
+    `&responseTime=${responseTime}` +
+    `&errorCode=${errorCode}` +
+    `&payType=${payType}` +
+    `&extraData=${extraData}`;
+
+  // ================================================================
+
   const expectedSignature = generateSignature(
     rawSignature,
     config.momo.secretKey
@@ -132,16 +174,16 @@ const verifyIpnSignature = (requestBody) => {
   const isValid = receivedSignature === expectedSignature;
 
   if (!isValid) {
-    logger.warn(
-      `MoMo IPN Signature Mismatch. Received: ${receivedSignature}, Expected: ${expectedSignature}`
-    );
+    logger.warn(`MoMo IPN Signature Mismatch!`);
+    logger.debug(`Received Signature: ${receivedSignature}`);
+    logger.debug(`Expected Signature: ${expectedSignature}`);
+    logger.debug(`Raw String for Signature: ${rawSignature}`);
   } else {
     logger.info('MoMo IPN Signature Verified Successfully.');
   }
 
   return isValid;
 };
-
 module.exports = {
   createPaymentRequest,
   verifyIpnSignature,

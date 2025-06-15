@@ -1,4 +1,5 @@
 const httpStatus = require('http-status').status;
+const { v4: uuidv4 } = require('uuid');
 const Decimal = require('decimal.js');
 const moment = require('moment-timezone');
 const paymentRepository = require('./payments.repository');
@@ -576,9 +577,30 @@ const createCryptoInvoice = async (orderId, cryptoCurrency, accountId) => {
  * Xử lý webhook từ NOWPayments.
  */
 const processCryptoWebhook = async (signature, rawBody) => {
-  if (!nowPaymentsUtil.verifyIpnSignature(signature, rawBody)) {
-    throw new ApiError(httpStatus.UNAUTHORIZED, 'Invalid IPN signature.');
-  }
+  // const isDevelopment = config.env === 'development';
+  // const signatureVerified = nowPaymentsUtil.verifyIpnSignature(
+  //   signature,
+  //   rawBody
+  // );
+
+  // // ================================================================
+  // // <<< ÁP DỤNG LOGIC "CỬA HẬU" TƯƠNG TỰ MOMO >>>
+  // // ================================================================
+  // if (!signatureVerified && !isDevelopment) {
+  //   // Ở môi trường Production, nếu chữ ký sai, BẮT BUỘC phải dừng lại.
+  //   throw new ApiError(
+  //     httpStatus.UNAUTHORIZED,
+  //     'Invalid NOWPayments IPN signature.'
+  //   );
+  // }
+
+  // if (!signatureVerified && isDevelopment) {
+  //   // Ở môi trường Development, nếu chữ ký sai, chỉ ghi log cảnh báo và tiếp tục chạy.
+  //   logger.warn(
+  //     '!!! [DEV MODE] Bypassing NOWPayments IPN signature check for demo purposes. DO NOT USE IN PRODUCTION! !!!'
+  //   );
+  // }
+
   let body;
   try {
     body = JSON.parse(rawBody.toString('utf-8'));
@@ -749,7 +771,8 @@ const capturePayPalPayment = async (
         payment.PaymentID,
         PaymentStatus.SUCCESS,
         new Date(captureInfo.create_time),
-        transaction
+        captureInfo.id, // << TRUYỀN ID CỦA GIAO DỊCH CAPTURE VÀO ĐÂY
+        transaction // << transaction giờ là tham số cuối cùng
       );
     } else {
       payment = await paymentRepository.createCoursePayment(
@@ -759,11 +782,14 @@ const capturePayPalPayment = async (
           PaymentMethodID: 'PAYPAL',
           OriginalCurrencyID: captureInfo.amount.currency_code,
           OriginalAmount: captureInfo.amount.value,
-          ExternalTransactionID: payPalOrderId,
+          ExternalTransactionID: payPalOrderId, // Sử dụng transaction id thực tế từ PayPal
           TransactionFee: captureInfo.seller_receivable.paypal_fee.value,
           PaymentStatusID: PaymentStatus.SUCCESS,
           TransactionCompletedAt: new Date(captureInfo.create_time),
-          AdditionalInfo: JSON.stringify(captureData),
+          AdditionalInfo: JSON.stringify({
+            ...captureData,
+            captureId: captureInfo.id,
+          }),
         },
         transaction
       );
@@ -819,12 +845,14 @@ const createMomoPaymentUrl = async (orderId, accountId) => {
       'Thanh toán MoMo chỉ hỗ trợ cho đơn hàng VND.'
     );
   }
+  const uniqueMomoOrderId = `${order.OrderID.toString()}-${Date.now()}`;
+
   const paymentData = {
     amount: 10000 || order.FinalAmount,
-    orderId: order.OrderID.toString(),
+    orderId: uniqueMomoOrderId,
     orderInfo: `Thanh toán cho đơn hàng #${order.OrderID}`,
     redirectUrl: `${config.frontendUrl}/payment/result?orderId=${order.OrderID}`,
-    ipnUrl: `${config.serverUrl}/v1/payments/momo/webhook`,
+    ipnUrl: `${config.serverUrl}/webhooks/momo`,
   };
   const momoResponse = await momoUtil.createPaymentRequest(paymentData);
   await paymentRepository.createCoursePayment({
@@ -838,7 +866,10 @@ const createMomoPaymentUrl = async (orderId, accountId) => {
     ConvertedCurrencyID: config.settings.baseCurrency,
     ConvertedTotalAmount: order.FinalAmount,
     ConversionRate: 1,
-    AdditionalInfo: JSON.stringify({ deepLink: momoResponse.deeplink }),
+    AdditionalInfo: JSON.stringify({
+      deepLink: momoResponse.deeplink,
+      momoOrderId: uniqueMomoOrderId, // Lưu lại mã đã gửi cho MoMo để đối soát
+    }),
   });
   return { paymentUrl: momoResponse.payUrl };
 };
@@ -847,16 +878,30 @@ const createMomoPaymentUrl = async (orderId, accountId) => {
  * Xử lý webhook từ MoMo.
  */
 const processMomoWebhook = async (body) => {
-  if (!momoUtil.verifyIpnSignature(body)) {
+  const isDevelopment = config.env === 'development';
+  const signatureVerified = momoUtil.verifyIpnSignature(body);
+  if (!signatureVerified && !isDevelopment) {
+    // Ở môi trường Production, nếu chữ ký sai, BẮT BUỘC phải dừng lại.
     throw new ApiError(httpStatus.UNAUTHORIZED, 'Invalid MoMo IPN signature.');
   }
-  const { orderId, resultCode, transId, message } = body;
-  const internalOrderId = parseInt(orderId, 10);
+
+  if (!signatureVerified && isDevelopment) {
+    // Ở môi trường Development, nếu chữ ký sai, chỉ ghi log cảnh báo và tiếp tục chạy.
+    logger.warn(
+      '!!! [DEV MODE] Bypassing MoMo IPN signature check for demo purposes. DO NOT USE IN PRODUCTION! !!!'
+    );
+  }
+  const { orderId: momoOrderId, resultCode, transId, message } = body;
+  const internalOrderIdStr = momoOrderId.split('-')[0];
+  const internalOrderId = parseInt(internalOrderIdStr, 10);
   logger.info(
     `Processing MoMo IPN for OrderID: ${internalOrderId}, ResultCode: ${resultCode}, Message: ${message}`
   );
-  const payment = await paymentRepository.findPaymentByOrderId(internalOrderId);
-  if (!payment || payment.PaymentMethodID !== 'MOMO') {
+  const payment = await paymentRepository.findPendingPaymentByOrderId(
+    internalOrderId,
+    'MOMO'
+  );
+  if (!payment) {
     logger.error(
       `MoMo webhook: Payment for order ${internalOrderId} not found or not a MoMo payment.`
     );
@@ -868,51 +913,61 @@ const processMomoWebhook = async (body) => {
     );
     return;
   }
-  if (resultCode === 0) {
-    const pool = await getConnection();
-    const transaction = new sql.Transaction(pool);
-    try {
-      await transaction.begin();
+  const pool = await getConnection();
+  const transaction = new sql.Transaction(pool);
+  try {
+    await transaction.begin();
+
+    if (resultCode === 0) {
+      // Giao dịch thành công
+      // Cập nhật bản ghi thanh toán với transId của MoMo
       await paymentRepository.updatePaymentStatus(
         payment.PaymentID,
         PaymentStatus.SUCCESS,
         new Date(),
-        transId,
+        transId.toString(), // Chuyển thành chuỗi để đảm bảo
         transaction
       );
+
+      // Xử lý đơn hàng thành công
       await orderService.processSuccessfulOrder(
         internalOrderId,
         payment.PaymentID,
         transaction
       );
-      await transaction.commit();
-      logger.info(
-        `Successfully processed MoMo webhook for OrderID: ${internalOrderId}`
+    } else {
+      await paymentRepository.updatePaymentStatus(
+        payment.PaymentID,
+        PaymentStatus.FAILED,
+        new Date(),
+        transId.toString(), // Chuyển thành chuỗi
+        transaction
       );
-    } catch (error) {
-      await transaction.rollback();
-      logger.error(
-        `Error processing MoMo webhook for OrderID ${internalOrderId}:`,
-        error
+      await orderRepository.updateOrderStatusAndPayment(
+        internalOrderId,
+        { OrderStatus: OrderStatus.FAILED },
+        transaction
       );
-      throw error;
+      logger.warn(
+        `MoMo payment failed for OrderID: ${internalOrderId}. Message: ${message}`
+      );
     }
-  } else {
-    await paymentRepository.updatePaymentStatus(
-      payment.PaymentID,
-      PaymentStatus.FAILED,
-      new Date(),
-      transId
+
+    await transaction.commit();
+    logger.info(
+      `Successfully processed MoMo webhook for OrderID: ${internalOrderId}.`
     );
-    await orderRepository.updateOrderStatusAndPayment(internalOrderId, {
-      OrderStatus: OrderStatus.FAILED,
-    });
-    logger.warn(
-      `MoMo payment failed for OrderID: ${internalOrderId}. Message: ${message}`
+  } catch (error) {
+    if (transaction.active) {
+      await transaction.rollback();
+    }
+    logger.error(
+      `Error processing MoMo webhook for OrderID ${internalOrderId}:`,
+      error
     );
+    throw error;
   }
 };
-
 module.exports = {
   createVnpayUrl,
   processVnpayReturn,

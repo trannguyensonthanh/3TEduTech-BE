@@ -56,14 +56,21 @@ const createVnpayUrl = async (
   const amount = order.FinalAmount;
   const orderInfo = `Thanh toan don hang ${orderId}`;
   const txnRef = orderId.toString();
+  const options = {
+    orderType: 'other',
+    locale,
+    bankCode,
+    // Bạn cũng có thể override returnUrl ở đây nếu cần
+    // returnUrl: 'https://mysite.com/another_return_path'
+  };
+  const clientIp = ipAddr.split(',')[0].trim();
+  console.log('--- IP ĐƯỢC GỬI ĐẾN SERVICE ---', clientIp);
   const paymentUrl = vnpayUtil.createPaymentUrl(
     ipAddr,
     amount,
     orderInfo,
     txnRef,
-    'other',
-    locale,
-    bankCode
+    options
   );
   return paymentUrl;
 };
@@ -424,8 +431,8 @@ const createStripeCheckoutSession = async (orderId, accountId) => {
     payment_method_types: ['card'],
     line_items: lineItems,
     mode: 'payment',
-    success_url: `${config.frontendUrl}/payment/result?status=success&orderId=${orderId}`,
-    cancel_url: `${config.frontendUrl}/payment/result?status=cancel&orderId=${orderId}`,
+    success_url: `${config.frontendUrl}/payment/result?status=success&orderId=${orderId}`, // đường dẫn thành công
+    cancel_url: `${config.frontendUrl}/payment/result?status=cancel&orderId=${orderId}`, // đường dẫn hủy
     metadata: {
       orderId: order.OrderID,
       accountId: order.AccountID,
@@ -612,10 +619,9 @@ const processCryptoWebhook = async (signature, rawBody) => {
     payment_id: paymentId,
     payment_status: paymentStatus,
     order_id: orderIdStr,
-    actually_paid: actuallyPaid,
-    pay_currency: payCurrency,
   } = body;
   const orderId = parseInt(orderIdStr, 10);
+
   const payment = await paymentRepository.findPaymentByExternalId(
     paymentId,
     'CRYPTO'
@@ -654,6 +660,7 @@ const processCryptoWebhook = async (signature, rawBody) => {
       payment.PaymentID,
       newPaymentStatus,
       new Date(),
+      paymentId.toString(),
       transaction
     );
     if (newPaymentStatus === PaymentStatus.SUCCESS) {
@@ -674,7 +681,10 @@ const processCryptoWebhook = async (signature, rawBody) => {
       `Successfully processed Crypto webhook for OrderID ${orderId}, new status: ${newOrderStatus}`
     );
   } catch (error) {
-    await transaction.rollback();
+    if (transaction.active) {
+      // Kiểm tra trước khi rollback
+      await transaction.rollback();
+    }
     logger.error(
       `Error processing Crypto webhook for OrderID ${orderId}:`,
       error

@@ -32,14 +32,14 @@ const getUserProfile = async (accountId) => {
  */
 const updateUserProfile = async (accountId, updateBody) => {
   const allowedUpdates = [
-    'FullName',
-    'AvatarUrl',
-    'CoverImageUrl',
-    'Gender',
-    'BirthDate',
-    'PhoneNumber',
-    'Headline',
-    'Location',
+    'fullName',
+    'avatarUrl',
+    'coverImageUrl',
+    'gender',
+    'birthDate',
+    'phoneNumber',
+    'headline',
+    'location',
   ];
   const dataToUpdate = {};
   allowedUpdates.forEach((key) => {
@@ -47,7 +47,7 @@ const updateUserProfile = async (accountId, updateBody) => {
       dataToUpdate[key] = updateBody[key];
     }
   });
-
+  console.log(updateBody);
   if (Object.keys(dataToUpdate).length === 0) {
     throw new ApiError(
       httpStatus.BAD_REQUEST,
@@ -55,9 +55,27 @@ const updateUserProfile = async (accountId, updateBody) => {
     );
   }
 
-  if (dataToUpdate.PhoneNumber) {
-    // TODO: Thêm logic kiểm tra tính duy nhất của PhoneNumber nếu cần
-  }
+  // if (dataToUpdate.phoneNumber) {
+  //   // Kiểm tra định dạng số điện thoại hợp lệ (ví dụ: chỉ cho phép số, độ dài 10-11 ký tự)
+  //   const phoneRegex = /^(0|\+84)[0-9]{9,10}$/;
+  //   if (!phoneRegex.test(dataToUpdate.phoneNumber)) {
+  //     throw new ApiError(
+  //       httpStatus.BAD_REQUEST,
+  //       'Số điện thoại không hợp lệ. Vui lòng nhập đúng định dạng.'
+  //     );
+  //   }
+
+  //   // Kiểm tra tính duy nhất của phoneNumber
+  //   const existingUser = await userRepository.findUserByPhoneNumber(
+  //     dataToUpdate.phoneNumber
+  //   );
+  //   if (existingUser && existingUser.AccountID !== accountId) {
+  //     throw new ApiError(
+  //       httpStatus.CONFLICT,
+  //       'Số điện thoại đã được sử dụng bởi người dùng khác.'
+  //     );
+  //   }
+  // }
 
   const rowsAffected = await userRepository.updateUserProfileById(
     accountId,
@@ -133,8 +151,8 @@ const updateUserAvatar = async (accountId, file) => {
   }
 
   const dataToUpdate = {
-    AvatarUrl: uploadResult.secure_url,
-    AvatarPublicId: uploadResult.public_id,
+    avatarUrl: uploadResult.secure_url,
+    avatarPublicId: uploadResult.public_id,
   };
 
   try {

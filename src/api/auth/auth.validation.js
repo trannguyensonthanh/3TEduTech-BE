@@ -134,14 +134,14 @@ const changePassword = {
       'any.required': 'Mật khẩu mới là bắt buộc.',
       'string.min': 'Mật khẩu mới phải có ít nhất 8 ký tự',
     }),
-    confirmNewPassword: Joi.string()
-      .required()
-      .valid(Joi.ref('newPassword'))
-      .messages({
-        'string.empty': 'Xác nhận mật khẩu mới không được để trống.',
-        'any.required': 'Xác nhận mật khẩu mới là bắt buộc.',
-        'any.only': 'Xác nhận mật khẩu mới không khớp.',
-      }),
+    // confirmNewPassword: Joi.string()
+    //   .required()
+    //   .valid(Joi.ref('newPassword'))
+    //   .messages({
+    //     'string.empty': 'Xác nhận mật khẩu mới không được để trống.',
+    //     'any.required': 'Xác nhận mật khẩu mới là bắt buộc.',
+    //     'any.only': 'Xác nhận mật khẩu mới không khớp.',
+    //   }),
   }),
 };
 

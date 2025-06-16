@@ -920,7 +920,7 @@ const changePassword = async (accountId, currentPassword, newPassword) => {
   }
   const isPasswordMatch = await bcrypt.compare(
     currentPassword,
-    account.PasswordHash
+    account.HashedPassword
   );
   if (!isPasswordMatch) {
     throw new ApiError(
@@ -936,9 +936,9 @@ const changePassword = async (accountId, currentPassword, newPassword) => {
   }
   const hashedPassword = await bcrypt.hash(newPassword, 10);
   const updateResult = await accountRepository.updateAccountById(accountId, {
-    PasswordHash: hashedPassword,
+    HashedPassword: hashedPassword,
   });
-  if (!updateResult || updateResult.rowsAffected[0] === 0) {
+  if (updateResult === 0) {
     logger.error(`Failed to update password in DB for accountId: ${accountId}`);
     throw new ApiError(
       httpStatus.INTERNAL_SERVER_ERROR,

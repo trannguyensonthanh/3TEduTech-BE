@@ -1,4 +1,5 @@
 const { getConnection, sql } = require('../../database/connection');
+const { toPascalCaseObject } = require('../../utils/caseConverter');
 const logger = require('../../utils/logger');
 /**
  * Tìm tài khoản bằng email.
@@ -28,7 +29,7 @@ const findAccountById = async (accountId) => {
     const request = pool.request();
     request.input('AccountID', sql.BigInt, accountId);
     const result = await request.query(`
-            SELECT AccountID, Email, RoleID, Status, HasSocialLogin, CreatedAt, UpdatedAt
+            SELECT AccountID, Email, RoleID, Status, HasSocialLogin, CreatedAt, UpdatedAt, HashedPassword 
             FROM Accounts
             WHERE AccountID = @AccountID
         `);
@@ -121,15 +122,16 @@ const findAccountByPasswordResetToken = async (token) => {
  */
 const updateAccountById = async (accountId, updateData, transaction = null) => {
   try {
+    const updateDataPascalCase = toPascalCaseObject(updateData);
     const executor = transaction
       ? transaction.request()
       : (await getConnection()).request();
     executor.input('AccountID', sql.BigInt, accountId);
     executor.input('UpdatedAt', sql.DateTime2, new Date());
     const setClauses = ['UpdatedAt = @UpdatedAt'];
-    Object.keys(updateData).forEach((key) => {
-      if (Object.prototype.hasOwnProperty.call(updateData, key)) {
-        const value = updateData[key];
+    Object.keys(updateDataPascalCase).forEach((key) => {
+      if (Object.prototype.hasOwnProperty.call(updateDataPascalCase, key)) {
+        const value = updateDataPascalCase[key];
         let sqlType;
         if (key === 'Status' || key === 'RoleID') sqlType = sql.VarChar;
         else if (key === 'HashedPassword' || key.includes('Token'))

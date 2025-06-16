@@ -1,6 +1,7 @@
 const httpStatus = require('http-status').status;
 const ApiError = require('../../core/errors/ApiError');
 const { getConnection, sql } = require('../../database/connection');
+const { toPascalCaseObject } = require('../../utils/caseConverter');
 const logger = require('../../utils/logger');
 
 /**
@@ -143,19 +144,20 @@ const findAllPromotions = async (filters = {}, options = {}) => {
  */
 const updatePromotionById = async (promotionId, updateData) => {
   try {
+    const updateDataPascal = toPascalCaseObject(updateData);
     const pool = await getConnection();
     const request = pool.request();
     request.input('PromotionID', sql.Int, promotionId);
     request.input('UpdatedAt', sql.DateTime2, new Date());
 
     const setClauses = ['UpdatedAt = @UpdatedAt'];
-    Object.keys(updateData).forEach((key) => {
+    Object.keys(updateDataPascal).forEach((key) => {
       if (
         key !== 'PromotionID' &&
         key !== 'UsageCount' &&
         key !== 'CreatedAt'
       ) {
-        const value = updateData[key];
+        const value = updateDataPascal[key];
         let sqlType;
 
         if (['DiscountCode', 'DiscountType', 'Status'].includes(key))

@@ -5,7 +5,7 @@ const adminService = require('./admin.service');
 const { catchAsync } = require('../../utils/catchAsync');
 
 const getDashboardOverview = catchAsync(async (req, res) => {
-  const data = await adminService.getDashboardOverview();
+  const data = await adminService.getDashboardOverview(req.targetCurrency);
   res.status(httpStatus.OK).send(data);
 });
 

@@ -2,6 +2,44 @@ const { getConnection, sql } = require('../../database/connection');
 const logger = require('../../utils/logger');
 
 /**
+ * Tìm user (bao gồm cả thông tin profile và account) theo số điện thoại.
+ * @param {string} phoneNumber
+ * @returns {Promise<object|null>}
+ */
+const findUserByPhoneNumber = async (phoneNumber) => {
+  try {
+    const pool = await getConnection();
+    const request = pool.request();
+    request.input('PhoneNumber', sql.VarChar, phoneNumber);
+    const result = await request.query(`
+      SELECT
+        a.AccountID,
+        a.Email,
+        a.RoleID,
+        a.Status,
+        a.HasSocialLogin,
+        a.CreatedAt AS AccountCreatedAt,
+        a.UpdatedAt AS AccountUpdatedAt,
+        up.FullName,
+        up.AvatarUrl,
+        up.CoverImageUrl,
+        up.Gender,
+        up.BirthDate,
+        up.PhoneNumber,
+        up.Headline,
+        up.Location
+      FROM Accounts a
+      LEFT JOIN UserProfiles up ON a.AccountID = up.AccountID
+      WHERE up.PhoneNumber = @PhoneNumber
+    `);
+    return result.recordset[0] || null;
+  } catch (error) {
+    logger.error(`Error in findUserByPhoneNumber (${phoneNumber}):`, error);
+    throw error;
+  }
+};
+
+/**
  * Tìm user (bao gồm cả thông tin profile và account) theo AccountID.
  * @param {number} accountId
  * @returns {Promise<object|null>}
@@ -105,22 +143,22 @@ const updateUserProfileById = async (accountId, updateData) => {
         const value = updateData[key];
         let sqlType;
         if (
-          key === 'FullName' ||
-          key === 'Headline' ||
-          key === 'Location' ||
-          key === 'BankAccountHolderName' ||
-          key === 'BankName'
+          key === 'fullName' ||
+          key === 'headline' ||
+          key === 'location' ||
+          key === 'bankAccountHolderName' ||
+          key === 'bankName'
         )
           sqlType = sql.NVarChar;
         else if (
-          key === 'AvatarUrl' ||
-          key === 'CoverImageUrl' ||
-          key === 'PhoneNumber' ||
-          key === 'Gender' ||
-          key === 'BankAccountNumber'
+          key === 'avatarUrl' ||
+          key === 'coverImageUrl' ||
+          key === 'phoneNumber' ||
+          key === 'gender' ||
+          key === 'bankAccountNumber'
         )
           sqlType = sql.VarChar;
-        else if (key === 'BirthDate') sqlType = sql.Date;
+        else if (key === 'birthDate') sqlType = sql.Date;
         else {
           logger.warn(
             `Unhandled key type in updateUserProfileById for key: ${key}`
@@ -284,6 +322,7 @@ const findAllAccounts = async (options = {}) => {
 };
 
 module.exports = {
+  findUserByPhoneNumber,
   findUserById,
   createUserProfileInTransaction,
   findUserProfileById,
